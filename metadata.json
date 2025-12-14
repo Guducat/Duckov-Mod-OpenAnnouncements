@@ -1,0 +1,5 @@
+{
+  "name": "Duckov Mod OpenAnnouncements",
+  "description": "一个基于Cloudflare Pages & KV开发的serverless鸭科夫Mod公告系统.",
+  "requestFramePermissions": []
+}
