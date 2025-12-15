@@ -31,6 +31,11 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({ data, modNam
             <span className="text-xs px-2 py-1 bg-blue-50 dark:bg-brand-blue/20 text-blue-600 dark:text-brand-blue border border-blue-200 dark:border-brand-blue/30 rounded font-mono">
               {data.modId}
             </span>
+            {data.version?.trim() && (
+              <span className="text-xs px-2 py-1 bg-slate-50 dark:bg-black/30 text-slate-600 dark:text-brand-yellow/80 border border-slate-200 dark:border-brand-blue/30 rounded font-mono">
+                {data.version.trim()}
+              </span>
+            )}
           </div>
           <div className="text-sm text-slate-500 dark:text-brand-muted mb-4 flex gap-4">
             <span>发布者: <span className="text-brand-blue dark:text-brand-yellow font-medium">{data.author}</span></span>

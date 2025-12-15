@@ -388,7 +388,7 @@ export const announcementService = {
 
   update: async (
     token: string,
-    update: Pick<Announcement, 'id' | 'modId' | 'title' | 'content_html' | 'content_text'>
+    update: Pick<Announcement, 'id' | 'modId' | 'title' | 'content_html' | 'content_text'> & { version?: string }
   ): Promise<ApiResponse<Announcement>> => {
     const unityContent = update.content_text || update.content_html;
 
@@ -410,6 +410,7 @@ export const announcementService = {
 
       const next: Announcement = {
         ...currentList[idx],
+        version: typeof update.version === 'string' ? (update.version.trim() || undefined) : currentList[idx].version,
         title: update.title,
         content_html: update.content_html,
         content_text: unityContent

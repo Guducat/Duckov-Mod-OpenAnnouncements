@@ -2,6 +2,22 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { announcementService, modService } from '../../services/apiService';
 import { useSessionInfo } from '../../hooks/useSessionInfo';
 import { Announcement, AuthSession, ModDefinition, UserRole } from '../../types';
+import { compareVersionTagDesc } from '../../utils/version';
+
+const normalizeVersionTag = (value: string): string | undefined => {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const sortAnnouncementsByVersion = (list: Announcement[]): Announcement[] => {
+  const next = [...list];
+  next.sort((a, b) => {
+    const byVersion = compareVersionTagDesc(a.version, b.version);
+    if (byVersion !== 0) return byVersion;
+    return b.timestamp - a.timestamp;
+  });
+  return next;
+};
 
 interface UseDashboardControllerResult {
   token: string;
@@ -16,8 +32,10 @@ interface UseDashboardControllerResult {
   isCreateModalOpen: boolean;
   openCreateModal: () => void;
   closeCreateModal: () => void;
+  newVersion: string;
   newTitle: string;
   newContent: string;
+  updateNewVersion: (value: string) => void;
   updateNewTitle: (value: string) => void;
   updateNewContent: (value: string) => void;
   isSubmitting: boolean;
@@ -26,8 +44,10 @@ interface UseDashboardControllerResult {
   editTarget: Announcement | null;
   openEditModal: (announcement: Announcement) => void;
   closeEditModal: () => void;
+  editVersion: string;
   editTitle: string;
   editContent: string;
+  updateEditVersion: (value: string) => void;
   updateEditTitle: (value: string) => void;
   updateEditContent: (value: string) => void;
   isEditSubmitting: boolean;
@@ -36,19 +56,25 @@ interface UseDashboardControllerResult {
 }
 
 export const useDashboardController = (session: AuthSession | null): UseDashboardControllerResult => {
+  const SELECTED_MOD_STORAGE_KEY = 'selected_mod_id';
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [availableMods, setAvailableMods] = useState<ModDefinition[]>([]);
-  const [currentModId, setCurrentModId] = useState('');
+  const [currentModId, setCurrentModId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem(SELECTED_MOD_STORAGE_KEY) || '';
+  });
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newVersion, setNewVersion] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newContent, setNewContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Announcement | null>(null);
+  const [editVersion, setEditVersion] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
@@ -64,8 +90,15 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
         mods = mods.filter((m) => session?.user.allowedMods?.includes(m.id));
       }
       setAvailableMods(mods);
-      if (mods.length > 0 && !currentModId) {
-        setCurrentModId(mods[0].id);
+      if (mods.length > 0) {
+        const stillExists = currentModId ? mods.some((m) => m.id === currentModId) : false;
+        const nextModId = stillExists ? currentModId : mods[0].id;
+        if (nextModId !== currentModId) {
+          setCurrentModId(nextModId);
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SELECTED_MOD_STORAGE_KEY, nextModId);
+        }
       }
     } else {
       setLoadError(res.error || '加载 Mod 列表失败');
@@ -81,7 +114,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
     setLoading(true);
     const result = await announcementService.list(currentModId);
     if (result.success && result.data) {
-      setAnnouncements(result.data);
+      setAnnouncements(sortAnnouncementsByVersion(result.data));
     } else if (!result.success && result.error) {
       setLoadError(result.error);
     }
@@ -100,6 +133,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
       setIsSubmitting(true);
       const result = await announcementService.create(token, {
         modId: currentModId,
+        version: normalizeVersionTag(newVersion),
         title: newTitle,
         content_html: newContent,
         content_text: newContent,
@@ -108,6 +142,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
 
       if (result.success) {
         setIsCreateModalOpen(false);
+        setNewVersion('');
         setNewTitle('');
         setNewContent('');
         refreshAnnouncements();
@@ -116,13 +151,14 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
       }
       setIsSubmitting(false);
     },
-    [role, newTitle, newContent, token, currentModId, session, refreshAnnouncements]
+    [role, newVersion, newTitle, newContent, token, currentModId, session, refreshAnnouncements]
   );
 
   const openEditModal = useCallback(
     (announcement: Announcement) => {
       if (role === UserRole.GUEST) return;
       setEditTarget(announcement);
+      setEditVersion(announcement.version ?? '');
       setEditTitle(announcement.title);
       setEditContent(announcement.content_html);
       setIsEditModalOpen(true);
@@ -139,6 +175,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
       const result = await announcementService.update(session.token, {
         id: editTarget.id,
         modId: editTarget.modId,
+        version: editVersion.trim(),
         title: editTitle,
         content_html: editContent,
         content_text: editContent
@@ -146,7 +183,9 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
 
       if (result.success && result.data) {
         const updatedAnnouncement = result.data;
-        setAnnouncements((prev) => prev.map((a) => (a.id === editTarget.id ? updatedAnnouncement : a)));
+        setAnnouncements((prev) =>
+          sortAnnouncementsByVersion(prev.map((a) => (a.id === editTarget.id ? updatedAnnouncement : a)))
+        );
         setIsEditModalOpen(false);
         setEditTarget(null);
       } else {
@@ -154,7 +193,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
       }
       setIsEditSubmitting(false);
     },
-    [role, session, editTarget, editTitle, editContent]
+    [role, session, editTarget, editVersion, editTitle, editContent]
   );
 
   const handleDelete = useCallback(
@@ -175,15 +214,22 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
     announcements,
     availableMods,
     currentModId,
-    selectMod: (modId: string) => setCurrentModId(modId),
+    selectMod: (modId: string) => {
+      setCurrentModId(modId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SELECTED_MOD_STORAGE_KEY, modId);
+      }
+    },
     loading,
     loadError,
     refreshAnnouncements,
     isCreateModalOpen,
     openCreateModal: () => setIsCreateModalOpen(true),
     closeCreateModal: () => setIsCreateModalOpen(false),
+    newVersion,
     newTitle,
     newContent,
+    updateNewVersion: (value: string) => setNewVersion(value),
     updateNewTitle: (value: string) => setNewTitle(value),
     updateNewContent: (value: string) => setNewContent(value),
     isSubmitting,
@@ -195,8 +241,10 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
       setIsEditModalOpen(false);
       setEditTarget(null);
     },
+    editVersion,
     editTitle,
     editContent,
+    updateEditVersion: (value: string) => setEditVersion(value),
     updateEditTitle: (value: string) => setEditTitle(value),
     updateEditContent: (value: string) => setEditContent(value),
     isEditSubmitting,

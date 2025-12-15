@@ -665,6 +665,7 @@ export default {
 
       const body = await readJson<{
         modId?: string;
+        version?: string;
         title?: string;
         content_html?: string;
         content_text?: string;
@@ -676,10 +677,12 @@ export default {
       }
 
       const unityContent = body.content_text || body.content_html;
+      const version = typeof body.version === 'string' ? body.version.trim() : '';
       const id = `${Date.now()}_${crypto.randomUUID()}`;
       const next: Announcement = {
         id,
         modId: body.modId,
+        ...(version ? { version } : {}),
         title: body.title,
         content_html: body.content_html,
         content_text: unityContent,
@@ -701,6 +704,7 @@ export default {
       const body = await readJson<{
         modId?: string;
         id?: string;
+        version?: string;
         title?: string;
         content_html?: string;
         content_text?: string;
@@ -716,8 +720,12 @@ export default {
       if (!existing) return badRequest('公告不存在或已被删除');
 
       const unityContent = body.content_text || body.content_html;
+      const versionValue = body.version;
+      const hasVersionField = typeof versionValue === 'string';
+      const normalizedVersion = hasVersionField ? versionValue.trim() : '';
       const next: Announcement = {
         ...existing,
+        ...(hasVersionField ? { version: normalizedVersion || undefined } : {}),
         title: body.title,
         content_html: body.content_html,
         content_text: unityContent

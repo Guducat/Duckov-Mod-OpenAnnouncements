@@ -7,8 +7,10 @@ interface EditAnnouncementModalProps {
   onClose: () => void;
   modName: string;
   modId: string;
+  version: string;
   title: string;
   content: string;
+  onVersionChange: (value: string) => void;
   onTitleChange: (value: string) => void;
   onContentChange: (value: string) => void;
   isSubmitting: boolean;
@@ -20,8 +22,10 @@ export const EditAnnouncementModal: React.FC<EditAnnouncementModalProps> = ({
   onClose,
   modName,
   modId,
+  version,
   title,
   content,
+  onVersionChange,
   onTitleChange,
   onContentChange,
   isSubmitting,
@@ -46,6 +50,20 @@ export const EditAnnouncementModal: React.FC<EditAnnouncementModalProps> = ({
           className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white focus:ring-2 focus:ring-brand-blue dark:focus:ring-brand-yellow focus:border-transparent outline-none placeholder-slate-400 dark:placeholder-gray-600"
           placeholder="版本更新说明"
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
+          Version（可选）
+        </label>
+        <input
+          type="text"
+          value={version}
+          onChange={(e) => onVersionChange(e.target.value)}
+          className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white focus:ring-2 focus:ring-brand-blue dark:focus:ring-brand-yellow focus:border-transparent outline-none placeholder-slate-400 dark:placeholder-gray-600 font-mono"
+          placeholder="例如：1.0.1 / 1.0.0 Beta / 1.0.0 Alpha"
+        />
+        <div className="mt-1 text-xs text-slate-400 dark:text-brand-muted">留空可清除版本标签。</div>
       </div>
 
       <div>

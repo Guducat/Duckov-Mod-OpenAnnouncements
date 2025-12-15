@@ -41,8 +41,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     isCreateModalOpen,
     openCreateModal,
     closeCreateModal,
+    newVersion,
     newTitle,
     newContent,
+    updateNewVersion,
     updateNewTitle,
     updateNewContent,
     isSubmitting,
@@ -51,8 +53,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     editTarget,
     openEditModal,
     closeEditModal,
+    editVersion,
     editTitle,
     editContent,
+    updateEditVersion,
     updateEditTitle,
     updateEditContent,
     isEditSubmitting,
@@ -103,8 +107,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           onClose={closeCreateModal}
           targetModId={currentModId}
           targetModName={currentModName}
+          version={newVersion}
           title={newTitle}
           content={newContent}
+          onVersionChange={updateNewVersion}
           onTitleChange={updateNewTitle}
           onContentChange={updateNewContent}
           onSubmit={handleCreate}
@@ -118,8 +124,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           onClose={closeEditModal}
           modName={editModalModName}
           modId={editTarget?.modId || currentModId}
+          version={editVersion}
           title={editTitle}
           content={editContent}
+          onVersionChange={updateEditVersion}
           onTitleChange={updateEditTitle}
           onContentChange={updateEditContent}
           isSubmitting={isEditSubmitting}

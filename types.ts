@@ -63,6 +63,12 @@ export interface ModDefinition {
 export interface Announcement {
   id: string;
   modId: string;
+  /**
+   * 可选版本号/版本标签（例如：1.0.1、1.0.0 Beta、1.0.0 Alpha）
+   * - 用于前端按版本排序与展示
+   * - 不参与鉴权/路由等业务逻辑
+   */
+  version?: string;
   title: string;
   content_html: string;
   content_text: string; // Unity 客户端使用的内容（带标签的富文本/HTML 源字符串，解析由客户端负责）
