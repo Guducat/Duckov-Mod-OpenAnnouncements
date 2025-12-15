@@ -7,6 +7,67 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '
 
 if (USE_MOCK_API) initMockDb();
 
+export interface SystemStatus {
+  initialized: boolean;
+  rootAdminUsername: string | null;
+}
+
+export const systemService = {
+  getStatus: async (): Promise<ApiResponse<SystemStatus>> => {
+    if (USE_MOCK_API) {
+      const users = mockKv.get<any[]>('SYSTEM_USERS_LIST') || [];
+      return {
+        success: true,
+        data: {
+          initialized: users.length > 0,
+          rootAdminUsername: users.find(u => u.role === UserRole.SUPER)?.username || null
+        }
+      };
+    }
+    const url = API_BASE_URL ? `${API_BASE_URL}${API_ENDPOINTS.SYSTEM_STATUS}` : API_ENDPOINTS.SYSTEM_STATUS;
+    try {
+      const res = await fetch(url);
+      return await res.json();
+    } catch {
+      return { success: false, error: '网络请求失败' };
+    }
+  },
+
+  init: async (initToken: string, username: string, password: string, displayName?: string): Promise<ApiResponse<User>> => {
+    if (USE_MOCK_API) {
+      const users = mockKv.get<any[]>('SYSTEM_USERS_LIST') || [];
+      if (users.length > 0) {
+        return { success: false, error: '系统已初始化' };
+      }
+      const admin = {
+        username,
+        password,
+        role: UserRole.SUPER,
+        displayName: displayName || username,
+        allowedMods: [],
+        status: UserStatus.ACTIVE
+      };
+      mockKv.put('SYSTEM_USERS_LIST', [admin]);
+      const { password: _, ...safe } = admin;
+      return { success: true, data: safe as User };
+    }
+    const url = API_BASE_URL ? `${API_BASE_URL}${API_ENDPOINTS.SYSTEM_INIT}` : API_ENDPOINTS.SYSTEM_INIT;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-init-token': initToken
+        },
+        body: JSON.stringify({ username, password, displayName })
+      });
+      return await res.json();
+    } catch {
+      return { success: false, error: '网络请求失败' };
+    }
+  }
+};
+
 const generateToken = () => Math.random().toString(36).substring(2) + Date.now().toString(36);
 
 const apiUrl = (path: string) => (API_BASE_URL ? `${API_BASE_URL}${path}` : path);

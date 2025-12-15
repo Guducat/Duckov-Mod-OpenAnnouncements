@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthSession, UserStatus } from './types';
-import { authService } from './services/apiService';
+import { authService, systemService, SystemStatus } from './services/apiService';
 import { Dashboard } from './pages/Dashboard';
 import { Modal } from './components/Modal';
 import { siCloudflare } from 'simple-icons';
@@ -30,6 +30,17 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+
+  // 系统初始化状态
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [checkingSystem, setCheckingSystem] = useState(true);
+  const [isInitModalOpen, setIsInitModalOpen] = useState(false);
+  const [initToken, setInitToken] = useState('');
+  const [initUsername, setInitUsername] = useState('admin');
+  const [initPassword, setInitPassword] = useState('');
+  const [initDisplayName, setInitDisplayName] = useState('');
+  const [initLoading, setInitLoading] = useState(false);
+  const [initError, setInitError] = useState('');
   
   // 主题状态: 'light' | 'dark' | 'system'
   type ThemeMode = 'light' | 'dark' | 'system';
@@ -94,6 +105,47 @@ const App: React.FC = () => {
       }
     }
   }, []);
+
+  // 检查系统初始化状态
+  useEffect(() => {
+    const checkSystem = async () => {
+      setCheckingSystem(true);
+      const res = await systemService.getStatus();
+      if (res.success && res.data) {
+        setSystemStatus(res.data);
+        if (!res.data.initialized) {
+          setIsInitModalOpen(true);
+        }
+      }
+      setCheckingSystem(false);
+    };
+    checkSystem();
+  }, []);
+
+  // 处理系统初始化
+  const handleSystemInit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInitError('');
+    setInitLoading(true);
+
+    try {
+      const res = await systemService.init(initToken, initUsername, initPassword, initDisplayName || undefined);
+      if (res.success) {
+        setSystemStatus({ initialized: true, rootAdminUsername: initUsername });
+        setIsInitModalOpen(false);
+        // 初始化成功后自动打开登录框
+        setUsername(initUsername);
+        setPassword(initPassword);
+        setIsLoginOpen(true);
+      } else {
+        setInitError(res.error || '初始化失败');
+      }
+    } catch {
+      setInitError('发生意外错误');
+    } finally {
+      setInitLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,6 +266,113 @@ const App: React.FC = () => {
             <span>基于 Cloudflare Workers 安全驱动</span>
           </div>
 
+        </div>
+      </Modal>
+
+      {/* 系统初始化 Modal */}
+      <Modal
+        isOpen={isInitModalOpen}
+        onClose={() => {}}
+        title="系统初始化"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="Duckov"
+              className="h-9 w-9 rounded"
+              loading="eager"
+              decoding="async"
+              onError={(e) => {
+                e.currentTarget.src = '/favicon.png';
+              }}
+            />
+            <div>
+              <div className="font-bold text-slate-900 dark:text-brand-white">系统初始化设置</div>
+              <div className="text-xs text-slate-500 dark:text-brand-muted">首次使用需要创建超级管理员账号</div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg text-amber-700 dark:text-amber-400 text-sm">
+            请输入在 Cloudflare Dashboard 中设置的 <code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">INIT_TOKEN</code> 密钥
+          </div>
+
+          <form onSubmit={handleSystemInit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
+                初始化令牌 (INIT_TOKEN)
+              </label>
+              <input
+                type="password"
+                value={initToken}
+                onChange={(e) => setInitToken(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none font-mono"
+                placeholder="请输入初始化令牌"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
+                管理员用户名
+              </label>
+              <input
+                type="text"
+                value={initUsername}
+                onChange={(e) => setInitUsername(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
+                placeholder="admin"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
+                管理员密码
+              </label>
+              <input
+                type="password"
+                value={initPassword}
+                onChange={(e) => setInitPassword(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
+                placeholder="请设置强密码"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
+                显示名称 (可选)
+              </label>
+              <input
+                type="text"
+                value={initDisplayName}
+                onChange={(e) => setInitDisplayName(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
+                placeholder="系统管理员"
+              />
+            </div>
+
+            {initError && (
+              <div className="p-3 bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/50 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
+                {initError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={initLoading}
+              className="w-full bg-brand-blue hover:bg-blue-600 dark:bg-brand-yellow dark:hover:bg-yellow-400 text-white dark:text-brand-base font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center"
+            >
+              {initLoading ? '初始化中...' : '初始化系统'}
+            </button>
+          </form>
+
+          <div className="text-center text-xs text-slate-500 dark:text-brand-muted flex items-center justify-center gap-2">
+            <CloudflareLogo size={24} className="shrink-0" />
+            <span>基于 Cloudflare Workers 安全驱动</span>
+          </div>
         </div>
       </Modal>
     </>
