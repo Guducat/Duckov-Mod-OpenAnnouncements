@@ -90,7 +90,8 @@ const hashPassword = async (
   password: string,
   opts?: { salt?: Uint8Array; iterations?: number }
 ): Promise<Pick<StoredUser, 'passwordHash' | 'passwordSalt' | 'passwordIterations' | 'passwordAlgo'>> => {
-  const iterations = opts?.iterations ?? 150_000;
+  // Cloudflare Workers 限制 PBKDF2 迭代次数最大为 100000
+  const iterations = opts?.iterations ?? 100_000;
   const salt = opts?.salt ?? crypto.getRandomValues(new Uint8Array(16));
   const derived = await pbkdf2Sha256(password, salt, iterations);
   return {
@@ -188,12 +189,13 @@ const canAccessMod = (user: User, modId: string): boolean => {
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    if (req.method === 'OPTIONS') {
-      return withCors(new Response(null, { status: 204 }));
-    }
+    try {
+      if (req.method === 'OPTIONS') {
+        return withCors(new Response(null, { status: 204 }));
+      }
 
-    const url = new URL(req.url);
-    const path = url.pathname;
+      const url = new URL(req.url);
+      const path = url.pathname;
 
     if (path === '/' && req.method === 'GET') {
       return withCors(
@@ -741,5 +743,12 @@ export default {
     }
 
     return notFound();
+    } catch (err) {
+      console.error('Worker error:', err);
+      return withCors(json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Internal Server Error'
+      }, { status: 500 }));
+    }
   }
 };
