@@ -2,7 +2,7 @@ name = "duckov-mod-openannouncements"
 main = "workers/src/index.ts"
 compatibility_date = "2025-12-14"
 
-[assets]
+# [assets]
 assets = { directory = "./dist" }
 
 # KV 命名空间绑定
