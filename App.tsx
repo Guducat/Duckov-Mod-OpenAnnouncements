@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { AuthSession, UserStatus } from './types';
 import { authService, systemService, SystemStatus } from './services/apiService';
 import { Dashboard } from './pages/Dashboard';
+import { AdminPage } from './pages/Admin';
 import { Modal } from './components/Modal';
+import { ThemeMode } from './components/ThemeToggle';
 import { siCloudflare } from 'simple-icons';
+import { useHashRoute } from './hooks/useHashRoute';
 
 const CloudflareLogo: React.FC<{ size?: number; className?: string }> = ({
   size = 14,
@@ -30,10 +33,10 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const { route, navigate } = useHashRoute();
 
   // 系统初始化状态
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const [checkingSystem, setCheckingSystem] = useState(true);
   const [isInitModalOpen, setIsInitModalOpen] = useState(false);
   const [initToken, setInitToken] = useState('');
   const [initUsername, setInitUsername] = useState('admin');
@@ -43,7 +46,6 @@ const App: React.FC = () => {
   const [initError, setInitError] = useState('');
   
   // 主题状态: 'light' | 'dark' | 'system'
-  type ThemeMode = 'light' | 'dark' | 'system';
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window === 'undefined') return 'system';
     const stored = localStorage.getItem('themeMode');
@@ -85,19 +87,32 @@ const App: React.FC = () => {
     localStorage.setItem('themeMode', themeMode);
   }, [appliedTheme, themeMode]);
 
+  const parseStoredSession = (raw: string): AuthSession | null => {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const token = (parsed as { token?: unknown }).token;
+      const expiresAt = (parsed as { expiresAt?: unknown }).expiresAt;
+      const user = (parsed as { user?: unknown }).user;
+      if (typeof token !== 'string' || typeof expiresAt !== 'number' || !user || typeof user !== 'object') return null;
+
+      const status = (user as { status?: unknown }).status;
+      const normalizedUser = {
+        ...(user as Record<string, unknown>),
+        status: status === UserStatus.ACTIVE || status === UserStatus.DISABLED ? status : UserStatus.ACTIVE
+      } as AuthSession['user'];
+
+      return { token, expiresAt, user: normalizedUser };
+    } catch {
+      return null;
+    }
+  };
+
   // 组件挂载时检查现有会话
   useEffect(() => {
     const stored = localStorage.getItem('local_session');
     if (stored) {
-      const parsed = JSON.parse(stored) as any;
-      const normalized: AuthSession | null = parsed?.token && parsed?.user && parsed?.expiresAt ? {
-        token: parsed.token,
-        expiresAt: parsed.expiresAt,
-        user: {
-          ...parsed.user,
-          status: parsed.user?.status ?? UserStatus.ACTIVE
-        }
-      } : null;
+      const normalized = parseStoredSession(stored);
       if (normalized && normalized.expiresAt > Date.now() && normalized.user.status === UserStatus.ACTIVE) {
         setSession(normalized);
       } else {
@@ -109,7 +124,6 @@ const App: React.FC = () => {
   // 检查系统初始化状态
   useEffect(() => {
     const checkSystem = async () => {
-      setCheckingSystem(true);
       const res = await systemService.getStatus();
       if (res.success && res.data) {
         setSystemStatus(res.data);
@@ -117,7 +131,6 @@ const App: React.FC = () => {
           setIsInitModalOpen(true);
         }
       }
-      setCheckingSystem(false);
     };
     checkSystem();
   }, []);
@@ -161,7 +174,7 @@ const App: React.FC = () => {
       } else {
         setError(response.error || '登录失败');
       }
-    } catch (err) {
+    } catch {
       setError('发生意外错误');
     } finally {
       setLoading(false);
@@ -180,16 +193,33 @@ const App: React.FC = () => {
 
   return (
     <>
-      <Dashboard
-        session={session}
-        onLogout={handleLogout}
-        onLoginClick={() => {
-          setError('');
-          setIsLoginOpen(true);
-        }}
-        themeMode={themeMode}
-        setThemeMode={setThemeMode}
-      />
+      {route === 'admin' ? (
+        <AdminPage
+          session={session}
+          onLogout={handleLogout}
+          onLoginClick={() => {
+            setError('');
+            setIsLoginOpen(true);
+          }}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
+          activeRoute={route}
+          onNavigate={navigate}
+        />
+      ) : (
+        <Dashboard
+          session={session}
+          onLogout={handleLogout}
+          onLoginClick={() => {
+            setError('');
+            setIsLoginOpen(true);
+          }}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
+          activeRoute={route}
+          onNavigate={navigate}
+        />
+      )}
 
       <Modal
         isOpen={isLoginOpen}
