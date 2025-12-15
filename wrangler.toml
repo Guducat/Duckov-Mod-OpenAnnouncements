@@ -1,0 +1,33 @@
+name = "duckov-mod-openannouncements-api"
+main = "workers/src/index.ts"
+compatibility_date = "2025-12-14"
+
+[assets]
+directory = "./dist"
+
+# KV 命名空间绑定：请在 Cloudflare Dashboard 中手动添加
+# Workers/Pages -> Settings -> Bindings -> Add -> KV Namespace
+# Variable name: ANNOUNCEMENTS_KV
+
+# [vars]
+# 敏感变量请在 Cloudflare Dashboard 中设置：
+# Settings -> Variables and Secrets -> Add variable
+# - INIT_TOKEN: 初始化令牌（用于 /api/system/init）
+#
+# 本地开发：创建 .dev.vars 文件（已在 .gitignore 中）
+# INIT_TOKEN=your_local_token
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1
