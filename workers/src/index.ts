@@ -40,7 +40,7 @@ const withCors = (res: Response): Response => {
   const headers = new Headers(res.headers);
   headers.set('access-control-allow-origin', '*');
   headers.set('access-control-allow-methods', 'GET,POST,OPTIONS');
-  headers.set('access-control-allow-headers', 'content-type, authorization');
+  headers.set('access-control-allow-headers', 'content-type, authorization, x-init-token');
   headers.set('vary', 'origin');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 };

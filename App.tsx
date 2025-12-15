@@ -3,7 +3,6 @@ import { AuthSession, UserStatus } from './types';
 import { authService } from './services/apiService';
 import { Dashboard } from './pages/Dashboard';
 import { Modal } from './components/Modal';
-import { MOCK_SEED_USER } from './constants';
 import { siCloudflare } from 'simple-icons';
 
 const CloudflareLogo: React.FC<{ size?: number; className?: string }> = ({
@@ -215,13 +214,6 @@ const App: React.FC = () => {
             <span>基于 Cloudflare Workers 安全驱动</span>
           </div>
 
-          {((import.meta as any).env?.VITE_USE_MOCK_API ?? 'true').toLowerCase() !== 'false' && (
-            <div className="p-3 bg-slate-50 dark:bg-brand-card/40 rounded text-xs text-slate-500 dark:text-brand-muted border border-slate-200 dark:border-brand-blue/10">
-              <span className="block font-bold mb-1 text-brand-blue dark:text-brand-yellow">演示账号（Mock）：</span>
-              用户: <span className="text-slate-700 dark:text-gray-300 font-mono">{MOCK_SEED_USER.username}</span> |{' '}
-              密码: <span className="text-slate-700 dark:text-gray-300 font-mono">{MOCK_SEED_USER.password}</span>
-            </div>
-          )}
         </div>
       </Modal>
     </>
