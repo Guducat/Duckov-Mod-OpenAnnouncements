@@ -9,6 +9,7 @@ import {
   type UpdateUserRequest,
   type User
 } from '../../types';
+import { isAllowedModId } from '../../utils/modId';
 
 type StoredUser = User & {
   passwordHash: string;
@@ -214,7 +215,7 @@ const isRootAdminSession = async (session: AuthSession, env: Env): Promise<boole
 
 const canAccessMod = (user: User, modId: string): boolean => {
   if (user.role === UserRole.SUPER) return true;
-  return user.allowedMods?.includes(modId) || false;
+  return isAllowedModId(user.allowedMods, modId);
 };
 
 const canApiKeyAccessMod = (apiKey: ApiKeyRecord, modId: string): boolean => {
@@ -311,6 +312,10 @@ export default {
               '/api/push/announcement',
               '/api/admin/post',
               '/api/admin/delete',
+              '/api/mod/list',
+              '/api/mod/create',
+              '/api/mod/delete',
+              '/api/mod/reorder',
               '/api/apikey/create',
               '/api/apikey/list',
               '/api/apikey/revoke'
@@ -501,8 +506,7 @@ export default {
         const candidates = requested.length ? requested : (fallbackModId ? [fallbackModId] : []);
         if (candidates.length === 0) return badRequest('缺少 modId 或 allowedMods');
 
-        const allowedSet = new Set((session.user.allowedMods || []).filter(Boolean));
-        allowedMods = candidates.filter((id) => allowedSet.has(id));
+        allowedMods = candidates.filter((id) => isAllowedModId(session.user.allowedMods || [], id));
         if (allowedMods.length === 0) return forbidden('权限不足：所选 Mod 不在你的授权范围内');
       } else {
         allowedMods = body?.modId ? [String(body.modId).trim()].filter(Boolean) : normalizeAllowedMods(body?.allowedMods);
@@ -613,7 +617,56 @@ export default {
       if (!body?.modId) return badRequest('缺少 modId');
 
       const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+
+      // Remove mod from list
       await env.ANNOUNCEMENTS_KV.put(KV_KEYS.MODS, JSON.stringify(mods.filter((m) => m.id !== body.modId)));
+
+      // Clean up ghost permissions: remove modId from all users' allowedMods
+      const users = await listUsers(env);
+      const updatePromises: Promise<void>[] = [];
+      for (const user of users) {
+        if (user.allowedMods?.includes(body.modId)) {
+          user.allowedMods = user.allowedMods.filter((id) => id !== body.modId);
+          updatePromises.push(putUser(env, user));
+        }
+      }
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+      }
+
+      return withCors(json({ success: true }));
+    }
+
+    if (path === '/api/mod/reorder' && req.method === 'POST') {
+      const initError = await requireInitialized(env);
+      if (initError) return initError;
+
+      const session = await getSession(req, env);
+      if (!session) return unauthorized('登录已过期');
+      if (session.user.role !== UserRole.SUPER) return forbidden('权限不足');
+
+      const body = await readJson<{ orderedIds?: string[] }>(req);
+      if (!body?.orderedIds || !Array.isArray(body.orderedIds)) return badRequest('缺少 orderedIds');
+
+      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const modMap = new Map(mods.map((m) => [m.id, m]));
+      const reordered: ModDefinition[] = [];
+
+      // Reorder according to orderedIds
+      for (const id of body.orderedIds) {
+        const mod = modMap.get(id);
+        if (mod) {
+          reordered.push(mod);
+          modMap.delete(id);
+        }
+      }
+
+      // Append any mods not in orderedIds (safety fallback)
+      for (const mod of modMap.values()) {
+        reordered.push(mod);
+      }
+
+      await env.ANNOUNCEMENTS_KV.put(KV_KEYS.MODS, JSON.stringify(reordered));
       return withCors(json({ success: true }));
     }
 

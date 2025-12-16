@@ -1,5 +1,10 @@
 import React from 'react';
-import { Code2, LayoutList, LogIn, LogOut, Shield } from 'lucide-react';
+import { AppBar, Toolbar, Box, IconButton, ToggleButtonGroup, ToggleButton, Divider, useTheme } from '@mui/material';
+import CodeIcon from '@mui/icons-material/Code';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import LoginIcon from '@mui/icons-material/Login';
+import LogoutIcon from '@mui/icons-material/Logout';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import { AuthSession, UserRole } from '../../types';
 import { AppRoute } from '../../hooks/useHashRoute';
 import { ThemeMode, ThemeToggle } from '../ThemeToggle';
@@ -27,86 +32,144 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   setThemeMode,
   onOpenApiModal
 }) => {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
   const showAdminTab = role === UserRole.SUPER || role === UserRole.EDITOR;
+  const logoSrc = isDark ? '/logo_dark.jpg' : '/logo_light.jpg';
+
+  // Header/Toolbar background color
+  const headerBgColor = isDark ? '#024374' : '#EDEDED';
+
   return (
-    <header className="bg-white dark:bg-brand-card border-b border-slate-200 dark:border-brand-blue/20 sticky top-0 z-30 shadow-md transition-colors duration-300">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img
-            src="/logo.png"
-            alt="Duckov"
-            className="h-7 w-7 rounded"
-            loading="eager"
-            decoding="async"
-            onError={(e) => {
-              e.currentTarget.src = '/favicon.png';
+    <AppBar
+      position="sticky"
+      elevation={2}
+      sx={{
+        bgcolor: headerBgColor,
+        borderBottom: 1,
+        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'divider',
+      }}
+    >
+      <Toolbar
+        sx={{
+          maxWidth: 1280,
+          width: '100%',
+          mx: 'auto',
+          px: { xs: 2, sm: 3, lg: 4 },
+          minHeight: 64,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        {/* Logo */}
+        <Box
+          component="img"
+          src={logoSrc}
+          alt="逃离鸭科夫 Mod 公告站"
+          sx={{
+            height: { xs: 36, sm: 42, md: 48 },
+            width: 'auto',
+            maxWidth: { xs: 140, sm: 180, md: 220 },
+            objectFit: 'contain',
+          }}
+        />
+
+        {/* Navigation & Actions */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {/* Route Toggle */}
+          <ToggleButtonGroup
+            value={activeRoute}
+            exclusive
+            onChange={(_, newValue) => {
+              if (newValue !== null) {
+                onNavigate(newValue);
+              }
             }}
-          />
-          <span className="font-bold text-lg tracking-tight hidden sm:inline">
-            逃离鸭科夫
-            <span className="text-slate-500 dark:text-brand-blue font-light">Mod公告板</span>
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex bg-slate-100 dark:bg-black/20 rounded-lg p-1">
-            <button
-              onClick={() => onNavigate('announcements')}
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                activeRoute === 'announcements'
-                  ? 'bg-white dark:bg-brand-blue/20 text-brand-blue dark:text-brand-yellow shadow-sm'
-                  : 'text-slate-500 dark:text-brand-muted hover:text-slate-700'
-              }`}
-            >
-              <LayoutList size={16} /> <span className="hidden sm:inline">公告列表</span>
-            </button>
+            size="small"
+            sx={{
+              bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+              borderRadius: 2,
+              p: 0.5,
+              '& .MuiToggleButton-root': {
+                border: 'none',
+                borderRadius: '6px !important',
+                px: 1.5,
+                py: 0.75,
+                textTransform: 'none',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                gap: 1,
+                color: isDark ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                '&.Mui-selected': {
+                  bgcolor: isDark ? 'rgba(255,255,255,0.15)' : '#fff',
+                  color: isDark ? '#fff' : 'primary.main',
+                  boxShadow: isDark ? 0 : 1,
+                },
+                '&:hover': {
+                  bgcolor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.04)',
+                },
+              },
+            }}
+          >
+            <ToggleButton value="announcements">
+              <ViewListIcon sx={{ fontSize: 16 }} />
+              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                公告列表
+              </Box>
+            </ToggleButton>
             {showAdminTab && (
-              <button
-                onClick={() => onNavigate('admin')}
-                className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                  activeRoute === 'admin'
-                    ? 'bg-white dark:bg-brand-blue/20 text-brand-blue dark:text-brand-yellow shadow-sm'
-                    : 'text-slate-500 dark:text-brand-muted hover:text-slate-700'
-                }`}
-              >
-                <Shield size={16} /> <span className="hidden sm:inline">管理工具</span>
-              </button>
+              <ToggleButton value="admin">
+                <AdminPanelSettingsIcon sx={{ fontSize: 16 }} />
+                <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                  管理工具
+                </Box>
+              </ToggleButton>
             )}
-          </div>
+          </ToggleButtonGroup>
 
-          <div className="h-6 w-px bg-slate-200 dark:bg-brand-blue/20 mx-1" />
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'divider' }} />
 
           <ThemeToggle themeMode={themeMode} setThemeMode={setThemeMode} />
 
           {session && (
-            <button
+            <IconButton
               onClick={onOpenApiModal}
-              className="text-slate-500 hover:text-brand-blue dark:text-brand-muted dark:hover:text-brand-yellow transition-colors"
               title="API 调试"
+              sx={{
+                color: isDark ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                '&:hover': { color: isDark ? '#fff' : 'primary.main' },
+              }}
             >
-              <Code2 size={20} />
-            </button>
+              <CodeIcon fontSize="small" />
+            </IconButton>
           )}
 
           {session ? (
-            <button
+            <IconButton
               onClick={onLogout}
-              className="text-slate-500 hover:text-red-500 dark:text-brand-muted dark:hover:text-white transition-colors"
               title="退出登录"
+              sx={{
+                color: isDark ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                '&:hover': { color: 'error.main' },
+              }}
             >
-              <LogOut size={20} />
-            </button>
+              <LogoutIcon fontSize="small" />
+            </IconButton>
           ) : (
-            <button
+            <IconButton
               onClick={onLoginClick}
-              className="text-slate-500 hover:text-brand-blue dark:text-brand-muted dark:hover:text-brand-yellow transition-colors"
               title="登录"
+              sx={{
+                color: isDark ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                '&:hover': { color: isDark ? '#fff' : 'primary.main' },
+              }}
             >
-              <LogIn size={20} />
-            </button>
+              <LoginIcon fontSize="small" />
+            </IconButton>
           )}
-        </div>
-      </div>
-    </header>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 };

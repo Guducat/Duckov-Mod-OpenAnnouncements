@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   MOD_LIST: '/api/mod/list',
   MOD_CREATE: '/api/mod/create',
   MOD_DELETE: '/api/mod/delete',
+  MOD_REORDER: '/api/mod/reorder',
   USER_LIST: '/api/user/list',
   USER_CREATE: '/api/user/create',
   USER_DELETE: '/api/user/delete',

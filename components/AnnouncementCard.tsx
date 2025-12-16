@@ -1,6 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Card,
+  CardContent,
+  Box,
+  Typography,
+  Chip,
+  IconButton,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+} from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import EditIcon from '@mui/icons-material/Edit';
+import CodeIcon from '@mui/icons-material/Code';
+import CloseIcon from '@mui/icons-material/Close';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Announcement, UserRole } from '../types';
-import { Trash2, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface AnnouncementCardProps {
   data: Announcement;
@@ -10,100 +29,276 @@ interface AnnouncementCardProps {
   onEdit?: (a: Announcement) => void;
 }
 
-export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({ data, modName, userRole, onDelete, onEdit }) => {
+export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
+  data,
+  modName,
+  userRole,
+  onDelete,
+  onEdit,
+}) => {
   const [expanded, setExpanded] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [apiDebugOpen, setApiDebugOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  // 格式化时间戳（中文格式）
+  // Check if content is overflowing (needs expand button)
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (contentRef.current && !expanded) {
+        const { scrollHeight, clientHeight } = contentRef.current;
+        setIsOverflowing(scrollHeight > clientHeight);
+      }
+    };
+
+    checkOverflow();
+    // Re-check on window resize
+    window.addEventListener('resize', checkOverflow);
+    return () => window.removeEventListener('resize', checkOverflow);
+  }, [data.content_html, expanded]);
+
   const dateStr = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   }).format(new Date(data.timestamp));
 
+  const handleDeleteConfirm = () => {
+    onDelete(data.id);
+    setDeleteConfirmOpen(false);
+  };
+
+  const apiResponse = JSON.stringify(
+    {
+      code: 200,
+      result: 'ok',
+      data: {
+        mod: { id: data.modId, name: modName ?? '' },
+        announcement: data,
+      },
+    },
+    null,
+    2
+  );
+
+  const handleCopyApiResponse = async () => {
+    try {
+      await navigator.clipboard.writeText(apiResponse);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
   return (
-    <div className="bg-white dark:bg-brand-card border border-slate-200 dark:border-brand-blue/20 rounded-lg p-6 mb-4 shadow-sm hover:shadow-md dark:shadow-none transition-all hover:border-blue-300 dark:hover:border-brand-yellow/50">
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-brand-white">{data.title}</h3>
-            <span className="text-xs px-2 py-1 bg-blue-50 dark:bg-brand-blue/20 text-blue-600 dark:text-brand-blue border border-blue-200 dark:border-brand-blue/30 rounded font-mono">
-              {data.modId}
-            </span>
-            {data.version?.trim() && (
-              <span className="text-xs px-2 py-1 bg-slate-50 dark:bg-black/30 text-slate-600 dark:text-brand-yellow/80 border border-slate-200 dark:border-brand-blue/30 rounded font-mono">
-                {data.version.trim()}
-              </span>
-            )}
-          </div>
-          <div className="text-sm text-slate-500 dark:text-brand-muted mb-4 flex gap-4">
-            <span>发布者: <span className="text-brand-blue dark:text-brand-yellow font-medium">{data.author}</span></span>
-            <span>{dateStr}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {userRole !== UserRole.GUEST && onEdit && (
-            <button
-              onClick={() => onEdit(data)}
-              className="p-2 text-slate-400 hover:text-brand-blue hover:bg-blue-50 dark:hover:text-brand-yellow dark:hover:bg-brand-blue/10 rounded-full transition-colors"
-              title="编辑公告"
-            >
-              <Pencil size={18} />
-            </button>
-          )}
-           {userRole === UserRole.SUPER && (
-            <button 
-              onClick={() => {
-                if(window.confirm('确定要删除这条公告吗？此操作不可恢复。')) {
-                  onDelete(data.id);
-                }
-              }}
-              className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-300 dark:hover:bg-red-400/10 rounded-full transition-colors"
-              title="删除公告"
-            >
-              <Trash2 size={18} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className={`prose prose-slate dark:prose-invert max-w-none text-slate-600 dark:text-gray-300 ${expanded ? '' : 'line-clamp-3'}`}>
-        <div dangerouslySetInnerHTML={{ __html: data.content_html }} />
-      </div>
-      
-      <button 
-        onClick={() => setExpanded(!expanded)}
-        className="mt-4 text-sm text-brand-blue hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 font-medium"
+    <>
+      <Card
+        sx={{
+          mb: 2,
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            boxShadow: 4,
+            borderColor: 'primary.light',
+          },
+        }}
       >
-        {expanded ? (
-          <>收起内容 <ChevronUp size={16} /></>
-        ) : (
-          <>阅读全文 <ChevronDown size={16} /></>
-        )}
-      </button>
+        <CardContent sx={{ p: 3 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Box sx={{ flex: 1 }}>
+              {/* Title and Tags */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1, flexWrap: 'wrap' }}>
+                <Typography variant="h3" component="h3" sx={{ fontWeight: 700 }}>
+                  {data.title}
+                </Typography>
+                <Chip
+                  label={data.modId}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
+                />
+                {data.version?.trim() && (
+                  <Chip
+                    label={data.version.trim()}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      fontFamily: 'monospace',
+                      fontSize: '0.75rem',
+                      borderColor: 'divider',
+                      color: 'text.secondary',
+                    }}
+                  />
+                )}
+              </Box>
 
-      {/* 调试区域：登录可见，展示标准 API JSON */}
-      {expanded && userRole !== UserRole.GUEST && (
-        <div className="mt-6 pt-4 border-t border-slate-200 dark:border-brand-blue/20">
-          <p className="text-xs text-slate-400 dark:text-brand-muted uppercase tracking-wider mb-2">API 返回内容（调试）</p>
-          <div className="bg-slate-100 dark:bg-black/50 p-3 rounded font-mono text-xs text-slate-600 dark:text-brand-yellow/80 whitespace-pre-wrap border border-slate-200 dark:border-transparent">
-            {JSON.stringify(
-              {
-                code: 200,
-                result: 'ok',
-                data: {
-                  mod: { id: data.modId, name: modName ?? '' },
-                  announcement: data
-                }
-              },
-              null,
-              2
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+              {/* Meta Info */}
+              <Box sx={{ display: 'flex', gap: 2, color: 'text.secondary', fontSize: '0.875rem', mb: 2 }}>
+                <Typography variant="body2">
+                  发布者:{' '}
+                  <Box component="span" sx={{ color: 'primary.main', fontWeight: 500 }}>
+                    {data.author}
+                  </Box>
+                </Typography>
+                <Typography variant="body2">{dateStr}</Typography>
+              </Box>
+            </Box>
+
+            {/* Actions */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              {userRole !== UserRole.GUEST && (
+                <IconButton
+                  onClick={() => setApiDebugOpen(true)}
+                  size="small"
+                  title="查看 API 返回数据"
+                  sx={{
+                    color: 'text.secondary',
+                    '&:hover': {
+                      color: 'info.main',
+                      backgroundColor: 'rgba(2, 136, 209, 0.08)',
+                    },
+                  }}
+                >
+                  <CodeIcon fontSize="small" />
+                </IconButton>
+              )}
+              {userRole !== UserRole.GUEST && onEdit && (
+                <IconButton
+                  onClick={() => onEdit(data)}
+                  size="small"
+                  title="编辑公告"
+                  sx={{
+                    color: 'text.secondary',
+                    '&:hover': {
+                      color: 'primary.main',
+                      bgcolor: 'primary.main',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                    },
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              )}
+              {userRole === UserRole.SUPER && (
+                <IconButton
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  size="small"
+                  title="删除公告"
+                  sx={{
+                    color: 'error.main',
+                    '&:hover': {
+                      bgcolor: 'error.main',
+                      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    },
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Box>
+          </Box>
+
+          {/* Content */}
+          <Box
+            ref={contentRef}
+            sx={{
+              color: 'text.secondary',
+              '& p': { margin: 0, mb: 1 },
+              '& a': { color: 'primary.main' },
+              '& ul, & ol': { pl: 3 },
+              ...(!expanded && {
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }),
+            }}
+            dangerouslySetInnerHTML={{ __html: data.content_html }}
+          />
+
+          {/* Expand Button - only show when content is truncated */}
+          {(isOverflowing || expanded) && (
+            <Button
+              onClick={() => setExpanded(!expanded)}
+              size="small"
+              sx={{
+                mt: 2,
+                textTransform: 'none',
+                fontWeight: 500,
+              }}
+              endIcon={expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            >
+              {expanded ? '收起内容' : '阅读全文'}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="删除公告"
+        message="确定要删除这条公告吗？此操作不可恢复。"
+        confirmText="删除"
+        confirmColor="error"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
+
+      {/* API Debug Dialog */}
+      <Dialog
+        open={apiDebugOpen}
+        onClose={() => setApiDebugOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        slotProps={{
+          backdrop: {
+            sx: { backdropFilter: 'blur(4px)' },
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          API 返回数据（调试）
+          <IconButton onClick={() => setApiDebugOpen(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <Button
+              size="small"
+              startIcon={<ContentCopyIcon />}
+              onClick={handleCopyApiResponse}
+              sx={{ textTransform: 'none' }}
+            >
+              {copied ? '已复制' : '复制'}
+            </Button>
+          </Box>
+          <Box
+            component="pre"
+            sx={{
+              p: 2,
+              borderRadius: 1,
+              bgcolor: 'action.hover',
+              fontFamily: 'monospace',
+              fontSize: '0.75rem',
+              color: 'text.secondary',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              m: 0,
+              maxHeight: 400,
+              overflow: 'auto',
+            }}
+          >
+            {apiResponse}
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ThemeProvider, CssBaseline, Box, TextField, Button, Alert, Typography, Stack } from '@mui/material';
 import { AuthSession, UserStatus } from './types';
 import { authService, systemService, SystemStatus } from './services/apiService';
 import { Dashboard } from './pages/Dashboard';
@@ -7,20 +8,16 @@ import { Modal } from './components/Modal';
 import { ThemeMode } from './components/ThemeToggle';
 import { siCloudflare } from 'simple-icons';
 import { useHashRoute } from './hooks/useHashRoute';
+import { createAppTheme } from './theme';
 
-const CloudflareLogo: React.FC<{ size?: number; className?: string }> = ({
-  size = 14,
-  className,
-}) => (
+const CloudflareLogo: React.FC<{ size?: number }> = ({ size = 14 }) => (
   <svg
     role="img"
     aria-label="Cloudflare"
     viewBox="0 0 24 24"
     width={size}
     height={size}
-    className={className}
-    fill="currentColor"
-    style={{ color: `#${siCloudflare.hex}` }}
+    fill={`#${siCloudflare.hex}`}
   >
     <path d={siCloudflare.path} />
   </svg>
@@ -45,7 +42,7 @@ const App: React.FC = () => {
   const [initDisplayName, setInitDisplayName] = useState('');
   const [initLoading, setInitLoading] = useState(false);
   const [initError, setInitError] = useState('');
-  
+
   // 主题状态: 'light' | 'dark' | 'system'
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window === 'undefined') return 'system';
@@ -77,16 +74,16 @@ const App: React.FC = () => {
     return () => mql.removeEventListener?.('change', apply);
   }, [themeMode]);
 
-  // 应用主题到 DOM 并保存设置
+  // 保存主题设置
   useEffect(() => {
-    const root = document.documentElement;
-    if (appliedTheme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
     localStorage.setItem('themeMode', themeMode);
-  }, [appliedTheme, themeMode]);
+  }, [themeMode]);
+
+  // 创建 MUI 主题实例
+  const theme = useMemo(() => createAppTheme(appliedTheme), [appliedTheme]);
+
+  // Theme-aware logo
+  const logoSrc = appliedTheme === 'dark' ? '/logo_dark.jpg' : '/logo_light.jpg';
 
   const parseStoredSession = (raw: string): AuthSession | null => {
     try {
@@ -193,7 +190,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
       {route === 'admin' ? (
         <AdminPage
           session={session}
@@ -222,6 +220,7 @@ const App: React.FC = () => {
         />
       )}
 
+      {/* 登录 Modal */}
       <Modal
         isOpen={isLoginOpen}
         onClose={() => {
@@ -230,74 +229,65 @@ const App: React.FC = () => {
         }}
         title="登录"
       >
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logo.png"
+        <Stack spacing={3}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box
+              component="img"
+              src={logoSrc}
               alt="Duckov"
-              className="h-9 w-9 rounded"
-              loading="eager"
-              decoding="async"
-              onError={(e) => {
-                e.currentTarget.src = '/favicon.png';
-              }}
+              sx={{ height: 36, width: 'auto', maxWidth: 120, objectFit: 'contain' }}
             />
-            <div>
-              <div className="font-bold text-slate-900 dark:text-brand-white">逃离鸭科夫 Mod 公告板</div>
-              <div className="text-xs text-slate-500 dark:text-brand-muted">可选登录：登录后可发布/管理</div>
-            </div>
-          </div>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                逃离鸭科夫 Mod 公告站
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                可选登录：登录后可发布/管理
+              </Typography>
+            </Box>
+          </Box>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
-                用户名
-              </label>
-              <input
-                type="text"
+          <Box component="form" onSubmit={handleLogin}>
+            <Stack spacing={2}>
+              <TextField
+                label="用户名"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
                 placeholder="请输入用户名"
                 required
+                fullWidth
+                size="small"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
-                密码
-              </label>
-              <input
+              <TextField
+                label="密码"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
                 placeholder="••••••••"
                 required
+                fullWidth
+                size="small"
               />
-            </div>
 
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/50 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
-                {error}
-              </div>
-            )}
+              {error && (
+                <Alert severity="error" sx={{ py: 0.5 }}>
+                  {error}
+                </Alert>
+              )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-brand-blue hover:bg-blue-600 dark:bg-brand-yellow dark:hover:bg-yellow-400 text-white dark:text-brand-base font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center"
-            >
-              {loading ? '登录中...' : '登录'}
-            </button>
-          </form>
+              <Button type="submit" variant="contained" fullWidth disabled={loading}>
+                {loading ? '登录中...' : '登录'}
+              </Button>
+            </Stack>
+          </Box>
 
-          <div className="text-center text-xs text-slate-500 dark:text-brand-muted flex items-center justify-center gap-2">
-            <CloudflareLogo size={24} className="shrink-0" />
-            <span>基于 Cloudflare Workers 安全驱动</span>
-          </div>
-
-        </div>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <CloudflareLogo size={24} />
+            <Typography variant="caption" color="text.secondary">
+              基于 Cloudflare Workers 安全驱动
+            </Typography>
+          </Box>
+        </Stack>
       </Modal>
 
       {/* 系统初始化 Modal */}
@@ -306,115 +296,99 @@ const App: React.FC = () => {
         onClose={() => {}}
         title="系统初始化"
       >
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logo.png"
+        <Stack spacing={3}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box
+              component="img"
+              src={logoSrc}
               alt="Duckov"
-              className="h-9 w-9 rounded"
-              loading="eager"
-              decoding="async"
-              onError={(e) => {
-                e.currentTarget.src = '/favicon.png';
-              }}
+              sx={{ height: 36, width: 'auto', maxWidth: 120, objectFit: 'contain' }}
             />
-            <div>
-              <div className="font-bold text-slate-900 dark:text-brand-white">系统初始化设置</div>
-              <div className="text-xs text-slate-500 dark:text-brand-muted">首次使用需要创建超级管理员账号</div>
-            </div>
-          </div>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                系统初始化设置
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                首次使用需要创建超级管理员账号
+              </Typography>
+            </Box>
+          </Box>
 
-          <div className="p-3 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg text-amber-700 dark:text-amber-400 text-sm">
+          <Alert severity="warning" sx={{ py: 1 }}>
             {isMockApi ? (
               <>
-                当前为 Mock 模式（LocalStorage）。<code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">INIT_TOKEN</code> 仅用于演示，可填写任意内容。
+                当前为 Mock 模式（LocalStorage）。<code>INIT_TOKEN</code> 仅用于演示，可填写任意内容。
               </>
             ) : (
               <>
-                请输入 <code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">INIT_TOKEN</code>（云端在 Cloudflare Dashboard/Secrets 设置；本地 wrangler dev 请在项目根目录创建 <code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">.dev.vars</code>）
+                请输入 <code>INIT_TOKEN</code>（云端在 Cloudflare Dashboard/Secrets 设置；本地 wrangler dev 请在项目根目录创建 <code>.dev.vars</code>）
               </>
             )}
-          </div>
+          </Alert>
 
-          <form onSubmit={handleSystemInit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
-                初始化令牌 (INIT_TOKEN)
-              </label>
-              <input
+          <Box component="form" onSubmit={handleSystemInit}>
+            <Stack spacing={2}>
+              <TextField
+                label="初始化令牌 (INIT_TOKEN)"
                 type="password"
                 value={initToken}
                 onChange={(e) => setInitToken(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none font-mono"
                 placeholder="请输入初始化令牌"
                 required
+                fullWidth
+                size="small"
+                slotProps={{ input: { sx: { fontFamily: 'monospace' } } }}
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
-                管理员用户名
-              </label>
-              <input
-                type="text"
+              <TextField
+                label="管理员用户名"
                 value={initUsername}
                 onChange={(e) => setInitUsername(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
                 placeholder="admin"
                 required
+                fullWidth
+                size="small"
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
-                管理员密码
-              </label>
-              <input
+              <TextField
+                label="管理员密码"
                 type="password"
                 value={initPassword}
                 onChange={(e) => setInitPassword(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
                 placeholder="请设置强密码"
                 required
-                minLength={6}
+                fullWidth
+                size="small"
+                slotProps={{ htmlInput: { minLength: 6 } }}
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-600 dark:text-brand-muted mb-1">
-                显示名称 (可选)
-              </label>
-              <input
-                type="text"
+              <TextField
+                label="显示名称 (可选)"
                 value={initDisplayName}
                 onChange={(e) => setInitDisplayName(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded-lg px-4 py-2 text-slate-900 dark:text-brand-white outline-none"
                 placeholder="系统管理员"
+                fullWidth
+                size="small"
               />
-            </div>
 
-            {initError && (
-              <div className="p-3 bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-500/50 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
-                {initError}
-              </div>
-            )}
+              {initError && (
+                <Alert severity="error" sx={{ py: 0.5 }}>
+                  {initError}
+                </Alert>
+              )}
 
-            <button
-              type="submit"
-              disabled={initLoading}
-              className="w-full bg-brand-blue hover:bg-blue-600 dark:bg-brand-yellow dark:hover:bg-yellow-400 text-white dark:text-brand-base font-bold py-2.5 rounded-lg transition-colors flex justify-center items-center"
-            >
-              {initLoading ? '初始化中...' : '初始化系统'}
-            </button>
-          </form>
+              <Button type="submit" variant="contained" fullWidth disabled={initLoading}>
+                {initLoading ? '初始化中...' : '初始化系统'}
+              </Button>
+            </Stack>
+          </Box>
 
-          <div className="text-center text-xs text-slate-500 dark:text-brand-muted flex items-center justify-center gap-2">
-            <CloudflareLogo size={24} className="shrink-0" />
-            <span>基于 Cloudflare Workers 安全驱动</span>
-          </div>
-        </div>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <CloudflareLogo size={24} />
+            <Typography variant="caption" color="text.secondary">
+              基于 Cloudflare Workers 安全驱动
+            </Typography>
+          </Box>
+        </Stack>
       </Modal>
-    </>
+    </ThemeProvider>
   );
 };
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Box, Container } from '@mui/material';
 import { AuthSession, UserRole } from '../types';
 import { ThemeMode } from '../components/ThemeToggle';
 import { AppHeader } from '../components/layout/AppHeader';
@@ -30,6 +31,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const {
     role,
+    canEditCurrentMod,
     announcements,
     availableMods,
     currentModId,
@@ -70,7 +72,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     : currentModName;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-brand-base text-slate-900 dark:text-brand-white flex flex-col transition-colors duration-300">
+    <Box
+      sx={{
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+        color: 'text.primary',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <AppHeader
         activeRoute={activeRoute}
         onNavigate={onNavigate}
@@ -83,7 +93,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onOpenApiModal={() => setIsApiModalOpen(true)}
       />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
+      <Container component="main" maxWidth="lg" sx={{ flex: 1, py: 4 }}>
         <AnnouncementsPanel
           announcements={announcements}
           availableMods={availableMods}
@@ -94,13 +104,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           onRefresh={refreshAnnouncements}
           onOpenCreateModal={openCreateModal}
           role={role}
+          canEditCurrentMod={canEditCurrentMod}
           currentModName={currentModName}
           onDelete={handleDelete}
           onEdit={openEditModal}
         />
-      </main>
+      </Container>
 
-      {role !== UserRole.GUEST && (
+      {role !== UserRole.GUEST && canEditCurrentMod && (
         <CreateAnnouncementModal
           isOpen={isCreateModalOpen}
           onClose={closeCreateModal}
@@ -117,7 +128,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         />
       )}
 
-      {role !== UserRole.GUEST && (
+      {role !== UserRole.GUEST && canEditCurrentMod && (
         <EditAnnouncementModal
           isOpen={isEditModalOpen}
           onClose={closeEditModal}
@@ -132,9 +143,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           isSubmitting={isEditSubmitting}
           onSubmit={handleEdit}
         />
-  )}
+      )}
 
-      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} />
-    </div>
+      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} token={session?.token} />
+    </Box>
   );
 };

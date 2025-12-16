@@ -11,6 +11,7 @@ import {
   UpdateUserRequest
 } from '../types';
 import { API_ENDPOINTS } from '../constants';
+import { isAllowedModId } from '../utils/modId';
 import { mockKv, initMockDb } from './mockDb';
 
 const USE_MOCK_API = (import.meta.env.VITE_USE_MOCK_API ?? 'true').toLowerCase() !== 'false';
@@ -111,7 +112,7 @@ const requestJson = async <T>(
 // 辅助函数：检查 RBAC 权限
 const canAccessMod = (user: User, modId: string): boolean => {
   if (user.role === UserRole.SUPER) return true;
-  return user.allowedMods?.includes(modId) || false;
+  return isAllowedModId(user.allowedMods, modId);
 };
 
 const formatApiKeyError = (res: ApiResponse<any>) => res.error || '请求失败';
@@ -149,8 +150,9 @@ export const apiKeyService = {
 
       const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as any[];
       if (session.user.role === UserRole.EDITOR) {
-        const allowed = new Set((session.user.allowedMods || []).filter(Boolean));
-        if (normalizedAllowedMods.some((id) => !allowed.has(id))) return { success: false, error: '权限不足：所选 Mod 不在你的授权范围内' };
+        if (normalizedAllowedMods.some((id) => !isAllowedModId(session.user.allowedMods || [], id))) {
+          return { success: false, error: '权限不足：所选 Mod 不在你的授权范围内' };
+        }
       }
 
       const id = crypto.randomUUID();
@@ -306,6 +308,35 @@ export const modService = {
         authorization: `Bearer ${token}`
       },
       body: JSON.stringify({ modId })
+    });
+  },
+
+  reorder: async (token: string, orderedIds: string[]): Promise<ApiResponse<void>> => {
+    if (USE_MOCK_API) {
+      const session = mockKv.get<AuthSession>(`session:${token}`);
+      if (session?.user.role !== UserRole.SUPER) return { success: false, error: '权限不足' };
+
+      const mods = mockKv.get<ModDefinition[]>('SYSTEM_MODS_LIST') || [];
+      const modMap = new Map(mods.map(m => [m.id, m]));
+      const reordered: ModDefinition[] = [];
+      for (const id of orderedIds) {
+        const mod = modMap.get(id);
+        if (mod) reordered.push(mod);
+      }
+      // Append any mods not in orderedIds (safety fallback)
+      for (const mod of mods) {
+        if (!orderedIds.includes(mod.id)) reordered.push(mod);
+      }
+      mockKv.put('SYSTEM_MODS_LIST', reordered);
+      return { success: true };
+    }
+    return requestJson<void>(API_ENDPOINTS.MOD_REORDER, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ orderedIds })
     });
   }
 };

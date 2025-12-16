@@ -1,4 +1,17 @@
 import React, { useState } from 'react';
+import {
+  Box,
+  TextField,
+  Button,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Typography,
+  Chip,
+  Stack,
+  Alert,
+} from '@mui/material';
 import { ModDefinition, UserRole } from '../../types';
 
 interface CreateUserPayload {
@@ -36,7 +49,7 @@ export const UserCreateForm: React.FC<UserCreateFormProps> = ({ mods, isRootAdmi
       password,
       displayName,
       role,
-      allowedModIds: role === UserRole.SUPER ? [] : Array.from(selectedMods)
+      allowedModIds: role === UserRole.SUPER ? [] : Array.from(selectedMods),
     });
     setUsername('');
     setPassword('');
@@ -46,69 +59,90 @@ export const UserCreateForm: React.FC<UserCreateFormProps> = ({ mods, isRootAdmi
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mb-8 bg-slate-100 dark:bg-black/20 p-4 rounded-lg space-y-3">
-      <h3 className="font-bold text-slate-700 dark:text-brand-muted mb-2 text-sm uppercase">添加新用户</h3>
-      <div className="grid grid-cols-2 gap-3">
-        <input
+    <Box
+      component="form"
+      onSubmit={handleSubmit}
+      sx={{
+        mb: 4,
+        p: 3,
+        bgcolor: 'action.hover',
+        borderRadius: 2,
+      }}
+    >
+      <Typography variant="overline" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+        添加新用户
+      </Typography>
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+        <TextField
           required
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="登录用户名"
-          className="input-std"
+          label="登录用户名"
+          size="small"
         />
-        <input
+        <TextField
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="初始密码"
-          className="input-std"
+          label="初始密码"
+          type="password"
+          size="small"
         />
-        <input
+        <TextField
           required
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="显示昵称"
-          className="input-std"
+          label="显示昵称"
+          size="small"
         />
-        <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className="input-std">
-          <option value={UserRole.EDITOR}>Mod作者/协作者</option>
-          <option value={UserRole.SUPER} disabled={!isRootAdmin}>
-            管理员
-          </option>
-        </select>
-      </div>
+        <FormControl size="small">
+          <InputLabel>角色</InputLabel>
+          <Select
+            value={role}
+            onChange={(e) => setRole(e.target.value as UserRole)}
+            label="角色"
+          >
+            <MenuItem value={UserRole.EDITOR}>Mod作者/协作者</MenuItem>
+            <MenuItem value={UserRole.SUPER} disabled={!isRootAdmin}>
+              管理员
+            </MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
 
-      {!isRootAdmin && <p className="text-xs text-slate-500 dark:text-brand-muted">提示：只有系统管理员才能创建或管理其他管理员。</p>}
-
-      {role === UserRole.EDITOR && (
-        <div className="mt-2">
-          <p className="text-sm text-slate-500 mb-2">允许管理的 Mod:</p>
-          <div className="flex flex-wrap gap-2">
-            {mods.map((m) => (
-              <button
-                type="button"
-                key={m.id}
-                onClick={() => toggleMod(m.id)}
-                className={`text-xs px-2 py-1 rounded border ${
-                  selectedMods.has(m.id)
-                    ? 'bg-brand-blue border-brand-blue text-white'
-                    : 'bg-white dark:bg-transparent border-slate-300 dark:border-slate-600 text-slate-500'
-                }`}
-              >
-                {m.name}
-              </button>
-            ))}
-          </div>
-        </div>
+      {!isRootAdmin && (
+        <Alert severity="info" sx={{ mt: 2 }} icon={false}>
+          <Typography variant="caption">
+            提示：只有系统管理员才能创建或管理其他管理员。
+          </Typography>
+        </Alert>
       )}
 
-      <button
-        type="submit"
-        className="w-full mt-2 bg-brand-blue dark:bg-brand-yellow text-white dark:text-brand-base py-2 rounded font-bold"
-      >
+      {role === UserRole.EDITOR && (
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            允许管理的 Mod:
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {mods.map((m) => (
+              <Chip
+                key={m.id}
+                label={m.name}
+                size="small"
+                onClick={() => toggleMod(m.id)}
+                color={selectedMods.has(m.id) ? 'primary' : 'default'}
+                variant={selectedMods.has(m.id) ? 'filled' : 'outlined'}
+                sx={{ cursor: 'pointer' }}
+              />
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      <Button type="submit" variant="contained" fullWidth sx={{ mt: 3 }}>
         创建用户
-      </button>
-    </form>
+      </Button>
+    </Box>
   );
 };
-

@@ -1,8 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Copy, Key, Trash2 } from 'lucide-react';
+import {
+  Box,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  Typography,
+  Stack,
+  Chip,
+  Alert,
+  FormControlLabel,
+  Checkbox,
+  CircularProgress,
+  AlertColor,
+} from '@mui/material';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { ApiKey, CreateApiKeyResponse, ModDefinition, UserRole } from '../../types';
 import { apiKeyService, modService } from '../../services/apiService';
+import { isAllowedModId } from '../../utils/modId';
 import { Modal } from '../Modal';
+import { ThreeStepConfirmDialog } from '../ThreeStepConfirmDialog';
+import { AppSnackbar } from '../AppSnackbar';
 
 interface ApiKeyManagerProps {
   token: string;
@@ -30,18 +50,46 @@ const copyText = async (text: string) => {
   }
 };
 
-export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ token, currentUsername, isRootAdmin, role, allowedModIds }) => {
+export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({
+  token,
+  currentUsername,
+  isRootAdmin,
+  role,
+  allowedModIds,
+}) => {
   const [mods, setMods] = useState<ModDefinition[]>([]);
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const [newName, setNewName] = useState('ci-release');
+  const [newName, setNewName] = useState('');
   const [newAllowedMods, setNewAllowedMods] = useState<Set<string>>(new Set());
   const [isCreating, setIsCreating] = useState(false);
 
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
   const [created, setCreated] = useState<CreateApiKeyResponse | null>(null);
+
+  // Snackbar state
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertColor }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    keyId: string;
+  }>({
+    open: false,
+    keyId: '',
+  });
+
+  const selectedKey = useMemo(() => keys.find((k) => k.id === confirmDialog.keyId), [keys, confirmDialog.keyId]);
+
+  const showMessage = (message: string, severity: AlertColor = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  };
 
   const reload = useCallback(async () => {
     setLoadError('');
@@ -50,8 +98,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ token, currentUser
     if (mRes.success && mRes.data) {
       let nextMods = mRes.data;
       if (role === UserRole.EDITOR) {
-        const allowed = new Set((allowedModIds || []).filter(Boolean));
-        nextMods = nextMods.filter((m) => allowed.has(m.id));
+        nextMods = nextMods.filter((m) => isAllowedModId(allowedModIds || [], m.id));
       }
       setMods(nextMods);
       if (nextMods.length > 0) {
@@ -74,13 +121,18 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ token, currentUser
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
+      showMessage('请输入 API key 名称', 'warning');
+      return;
+    }
     const allowedMods = Array.from(newAllowedMods);
     if (allowedMods.length === 0) return;
     setIsCreating(true);
-    const res = await apiKeyService.create(token, { name: newName.trim() || 'ci', allowedMods });
+    const res = await apiKeyService.create(token, { name: trimmedName, allowedMods });
     setIsCreating(false);
     if (!res.success || !res.data) {
-      alert(res.error || '创建失败');
+      showMessage(res.error || '创建失败', 'error');
       return;
     }
     setCreated(res.data);
@@ -88,150 +140,245 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ token, currentUser
     await reload();
   };
 
-  const handleRevoke = async (id: string) => {
-    if (!confirm('确定撤销此 API key 吗？撤销后将立即失效。')) return;
-    const res = await apiKeyService.revoke(token, id);
-    if (!res.success) {
-      alert(res.error || '撤销失败');
-      return;
+  const handleRevokeClick = (id: string) => {
+    setConfirmDialog({ open: true, keyId: id });
+  };
+
+  const handleCopy = async (text: string) => {
+    const ok = await copyText(text);
+    if (ok) {
+      showMessage('已复制到剪贴板', 'success');
+    } else {
+      showMessage('复制失败，请手动复制', 'error');
     }
-    await reload();
   };
 
   return (
-    <div className="space-y-6">
-      <div className="p-3 bg-blue-50 dark:bg-brand-blue/10 rounded-lg border border-blue-100 dark:border-brand-blue/20">
-        <p className="text-sm text-slate-600 dark:text-brand-muted">
-          用于 CI/流水线自动推送公告：API key 创建时仅返回一次明文 token，请立即保存；建议按流水线/仓库分别创建并在泄露时及时撤销。
-        </p>
-      </div>
+    <Stack spacing={3}>
+      {/* Info Alert */}
+      <Alert severity="info" icon={false}>
+        用于 CI/流水线自动推送公告：API key 创建时仅返回一次明文 token，请立即保存；建议按流水线/仓库分别创建并在泄露时及时撤销。
+      </Alert>
 
-      <div className="bg-white dark:bg-brand-card border border-slate-200 dark:border-brand-blue/10 rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Key size={18} className="text-slate-500 dark:text-brand-muted" />
-          <div className="font-bold text-slate-800 dark:text-brand-white">创建 API key</div>
-        </div>
+      {/* Create Form */}
+      <Card variant="outlined">
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <VpnKeyIcon color="action" />
+            <Typography variant="subtitle1" fontWeight={700}>
+              创建 API key
+            </Typography>
+          </Box>
 
-        <form onSubmit={handleCreate} className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-slate-500 dark:text-brand-muted">名称（用于识别）</label>
-              <input
+          <Box component="form" onSubmit={handleCreate}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+              <TextField
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="w-full bg-white dark:bg-brand-base border border-slate-300 dark:border-brand-blue/30 rounded px-3 py-2 text-sm outline-none"
+                label="名称（用于识别）"
                 placeholder="例如 ci-release"
+                size="small"
+                required
+                error={newName.length > 0 && !newName.trim()}
+                helperText={newName.length > 0 && !newName.trim() ? '名称不能为空' : ''}
               />
-            </div>
-            <div>
-              <label className="text-xs text-slate-500 dark:text-brand-muted">绑定 Mod（可多选）</label>
-              <div className="max-h-32 overflow-auto rounded border border-slate-200 dark:border-brand-blue/10 bg-slate-50 dark:bg-brand-base/30 p-2">
-                {mods.length ? (
-                  <div className="space-y-2">
-                    {mods.map((m) => {
-                      const checked = newAllowedMods.has(m.id);
-                      return (
-                        <label key={m.id} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              setNewAllowedMods((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(m.id)) next.delete(m.id);
-                                else next.add(m.id);
-                                return next;
-                              });
-                            }}
-                            className="mt-1"
-                          />
-                          <span className="min-w-0">
-                            <span className="font-medium">{m.name}</span>{' '}
-                            <span className="font-mono text-xs text-slate-500">({m.id})</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-500 dark:text-brand-muted">暂无 Mod（请先创建 Mod）</div>
-                )}
-              </div>
-              <div className="text-xs text-slate-500 dark:text-brand-muted mt-1">
-                {role === UserRole.EDITOR ? '仅显示你被授权的 Mod。' : '可绑定多个 Mod，便于一个流水线推送多个公告源。'}
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isCreating || newAllowedMods.size === 0 || mods.length === 0}
-            className="bg-brand-blue dark:bg-brand-yellow text-white dark:text-brand-base px-4 py-2 rounded font-bold disabled:opacity-50"
-          >
-            {isCreating ? '创建中…' : '创建 API key'}
-          </button>
-        </form>
-      </div>
-
-      <div className="bg-white dark:bg-brand-card border border-slate-200 dark:border-brand-blue/10 rounded-xl p-4">
-        <div className="font-bold text-slate-800 dark:text-brand-white mb-3">
-          {isRootAdmin ? '全部 API key（系统管理员视角）' : 'API key 记录'}
-        </div>
-
-        {loadError && <div className="text-sm text-red-500 mb-2">{loadError}</div>}
-        {loading ? (
-          <div className="text-sm text-slate-500 dark:text-brand-muted">加载中…</div>
-        ) : (
-          <div className="space-y-2">
-            {visibleKeys.length === 0 ? (
-              <div className="text-sm text-slate-500 dark:text-brand-muted">暂无</div>
-            ) : (
-              visibleKeys.map((k) => (
-                <div
-                  key={k.id}
-                  className="flex items-center justify-between p-3 bg-slate-50 dark:bg-brand-base/30 rounded border border-slate-200 dark:border-brand-blue/10"
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                  绑定 Mod（可多选）
+                </Typography>
+                <Box
+                  sx={{
+                    maxHeight: 128,
+                    overflow: 'auto',
+                    p: 1.5,
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'action.hover',
+                  }}
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded text-slate-700 dark:text-slate-200">
-                        {k.id}
-                      </span>
-                      <span className="font-bold text-slate-700 dark:text-brand-white truncate">{k.name}</span>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded border ${
-                          k.status === 'active'
-                            ? 'text-green-700 border-green-200 bg-green-50 dark:text-green-300 dark:border-green-700/40 dark:bg-green-900/20'
-                            : 'text-slate-600 border-slate-200 bg-slate-100 dark:text-slate-300 dark:border-slate-600/40 dark:bg-slate-800/30'
-                        }`}
-                      >
-                        {k.status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500 dark:text-brand-muted mt-1">
-                      {isRootAdmin ? (
-                        <>
-                          createdBy: <span className="font-mono">{k.createdBy}</span> ·{' '}
-                        </>
-                      ) : null}
-                      mod: <span className="font-mono">{k.allowedMods.join(', ') || '-'}</span> · createdAt:{' '}
-                      {formatTime(k.createdAt)}
-                      {k.lastUsedAt ? <> · lastUsedAt: {formatTime(k.lastUsedAt)}</> : null}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {k.status === 'active' && (
-                      <button onClick={() => handleRevoke(k.id)} className="text-red-500 hover:text-red-600 p-2">
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+                  {mods.length ? (
+                    <Stack spacing={0.5}>
+                      {mods.map((m) => (
+                        <FormControlLabel
+                          key={m.id}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={newAllowedMods.has(m.id)}
+                              onChange={() => {
+                                setNewAllowedMods((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(m.id)) next.delete(m.id);
+                                  else next.add(m.id);
+                                  return next;
+                                });
+                              }}
+                            />
+                          }
+                          label={
+                            <Typography variant="body2">
+                              {m.name}{' '}
+                              <Typography component="span" variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                                ({m.id})
+                              </Typography>
+                            </Typography>
+                          }
+                        />
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography variant="caption" color="text.secondary">
+                      暂无 Mod（请先创建 Mod）
+                    </Typography>
+                  )}
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {role === UserRole.EDITOR
+                    ? '仅显示你被授权的 Mod。'
+                    : '可绑定多个 Mod，便于一个流水线推送多个公告源。'}
+                </Typography>
+              </Box>
+            </Box>
 
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isCreating || !newName.trim() || newAllowedMods.size === 0 || mods.length === 0}
+            >
+              {isCreating ? '创建中…' : '创建 API key'}
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Key List */}
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2 }}>
+            {isRootAdmin ? '全部 API key（系统管理员视角）' : 'API key 记录'}
+          </Typography>
+
+          {loadError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {loadError}
+            </Alert>
+          )}
+
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <Stack spacing={1}>
+              {visibleKeys.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  暂无
+                </Typography>
+              ) : (
+                visibleKeys.map((k) => (
+                  <Card
+                    key={k.id}
+                    variant="outlined"
+                    sx={{
+                      p: 2,
+                      bgcolor: k.status === 'active' ? 'background.paper' : 'action.disabledBackground',
+                      opacity: k.status === 'active' ? 1 : 0.7,
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        {/* 名称和状态 */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <VpnKeyIcon fontSize="small" color={k.status === 'active' ? 'primary' : 'disabled'} />
+                          <Typography variant="subtitle1" fontWeight={700} noWrap>
+                            {k.name}
+                          </Typography>
+                          <Chip
+                            label={k.status === 'active' ? '有效' : '已撤销'}
+                            size="small"
+                            color={k.status === 'active' ? 'success' : 'default'}
+                            variant={k.status === 'active' ? 'filled' : 'outlined'}
+                          />
+                        </Box>
+
+                        {/* Key ID */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                          <Typography variant="caption" color="text.secondary">
+                            Key ID:
+                          </Typography>
+                          <Box
+                            component="code"
+                            sx={{
+                              px: 1,
+                              py: 0.25,
+                              bgcolor: 'action.hover',
+                              borderRadius: 0.5,
+                              fontFamily: 'monospace',
+                              fontSize: '0.75rem',
+                              color: 'text.secondary',
+                            }}
+                          >
+                            {k.id}
+                          </Box>
+                        </Box>
+
+                        {/* 详细信息 */}
+                        <Stack spacing={0.5}>
+                          {isRootAdmin && (
+                            <Typography variant="body2" color="text.secondary">
+                              创建者：<Box component="span" sx={{ fontWeight: 500, color: 'text.primary' }}>{k.createdBy}</Box>
+                            </Typography>
+                          )}
+                          <Typography variant="body2" color="text.secondary">
+                            绑定 Mod：
+                            {k.allowedMods.length > 0 ? (
+                              k.allowedMods.map((modId) => (
+                                <Chip
+                                  key={modId}
+                                  label={modId}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ ml: 0.5, fontFamily: 'monospace', fontSize: '0.7rem', height: 20 }}
+                                />
+                              ))
+                            ) : (
+                              <Box component="span" sx={{ color: 'text.disabled' }}>无</Box>
+                            )}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            创建时间：<Box component="span" sx={{ fontWeight: 500, color: 'text.primary' }}>{formatTime(k.createdAt)}</Box>
+                          </Typography>
+                          {k.lastUsedAt && (
+                            <Typography variant="body2" color="text.secondary">
+                              最后使用：<Box component="span" sx={{ fontWeight: 500, color: 'text.primary' }}>{formatTime(k.lastUsedAt)}</Box>
+                            </Typography>
+                          )}
+                        </Stack>
+                      </Box>
+
+                      {/* 操作按钮 */}
+                      {k.status === 'active' && (
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          startIcon={<DeleteIcon fontSize="small" />}
+                          onClick={() => handleRevokeClick(k.id)}
+                        >
+                          撤销
+                        </Button>
+                      )}
+                    </Box>
+                  </Card>
+                ))
+              )}
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Token Created Modal */}
       <Modal
         isOpen={tokenModalOpen}
         onClose={() => {
@@ -240,37 +387,96 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({ token, currentUser
         }}
         title="API key 已创建（请立即保存）"
       >
-        {created ? (
-          <div className="space-y-4">
-            <div className="p-3 bg-amber-50 dark:bg-yellow-900/20 rounded border border-amber-200 dark:border-yellow-700/30">
-              <p className="text-sm text-amber-800 dark:text-yellow-200">
-                该 token 仅在创建时返回一次，关闭后将无法再次查看；如遗失请撤销并重新创建。
-              </p>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500 dark:text-brand-muted mb-1">apiKey（请求体字段）</div>
-              <div className="flex gap-2">
-                <code className="flex-1 bg-slate-100 dark:bg-brand-base/40 px-3 py-2 rounded text-xs break-all">
-                  {created.token}
-                </code>
-                <button
-                  onClick={async () => {
-                    const ok = await copyText(created.token);
-                    if (!ok) alert('复制失败，请手动复制');
+        {created && (
+          <Stack spacing={3}>
+            <Alert severity="warning" sx={{ mt: 1 }}>
+              该 token 仅在创建时返回一次，关闭后将无法再次查看；如遗失请撤销并重新创建。
+            </Alert>
+
+            <Box>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                apiKey（请求体字段）
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Box
+                  component="code"
+                  sx={{
+                    flex: 1,
+                    p: 1.5,
+                    bgcolor: 'action.hover',
+                    borderRadius: 1,
+                    fontSize: '0.75rem',
+                    wordBreak: 'break-all',
+                    fontFamily: 'monospace',
                   }}
-                  className="px-3 py-2 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-bold"
-                  title="复制到剪贴板"
                 >
-                  <Copy size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="text-xs text-slate-500 dark:text-brand-muted">
-              推送接口：<span className="font-mono">POST /api/push/announcement</span>（Body：<span className="font-mono">apiKey</span>）
-            </div>
-          </div>
-        ) : null}
+                  {created.token}
+                </Box>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => handleCopy(created.token)}
+                  sx={{ minWidth: 'auto', px: 1.5 }}
+                >
+                  <ContentCopyIcon fontSize="small" />
+                </Button>
+              </Box>
+            </Box>
+
+            <Typography variant="caption" color="text.secondary">
+              推送接口：<Box component="span" sx={{ fontFamily: 'monospace' }}>POST /api/push/announcement</Box>（Body：
+              <Box component="span" sx={{ fontFamily: 'monospace' }}>apiKey</Box>）
+            </Typography>
+          </Stack>
+        )}
       </Modal>
-    </div>
+
+      {/* Three-step Revoke API key Dialog */}
+      <ThreeStepConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog({ open: false, keyId: '' })}
+        subjectCodeLabel="API key ID"
+        subjectCode={confirmDialog.keyId}
+        step1={{
+          title: '第 1 步：确认撤销',
+          message: `您确定要撤销 API key「${selectedKey?.name || confirmDialog.keyId}」吗？`,
+          warning: '撤销后将立即失效，相关流水线/服务会立刻无法推送公告。',
+          confirmText: '确认',
+          confirmColor: 'error',
+        }}
+        step2={{
+          title: '第 2 步：再次确认',
+          message: `请再次确认撤销 API key「${selectedKey?.name || confirmDialog.keyId}」。`,
+          warning: '建议先更新相关 CI/服务配置，再进行撤销以避免生产中断。',
+          confirmText: '确认',
+          confirmColor: 'error',
+        }}
+        step3={{
+          title: '第 3 步：最终确认',
+          message: `最终确认：撤销 API key「${selectedKey?.name || confirmDialog.keyId}」？`,
+          warning: '撤销操作不可撤销！',
+          confirmText: '撤销',
+          confirmColor: 'error',
+        }}
+        onFinalConfirm={async () => {
+          const id = confirmDialog.keyId;
+          const res = await apiKeyService.revoke(token, id);
+          if (!res.success) {
+            showMessage(res.error || '撤销失败', 'error');
+            return;
+          }
+          showMessage('API key 已撤销', 'success');
+          await reload();
+        }}
+      />
+
+      {/* Snackbar */}
+      <AppSnackbar
+        open={snackbar.open}
+        message={snackbar.message}
+        severity={snackbar.severity}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+      />
+    </Stack>
   );
 };

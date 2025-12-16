@@ -1,5 +1,17 @@
 import React from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Chip,
+  IconButton,
+  Button,
+  Stack,
+  Alert,
+} from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { User, UserRole, UserStatus } from '../../types';
 
 interface UserListProps {
@@ -21,7 +33,7 @@ export const UserList: React.FC<UserListProps> = ({
   onEdit,
   onResetPassword,
   onToggleStatus,
-  onDelete
+  onDelete,
 }) => {
   const canManageUser = (u: User): boolean => {
     if (u.username === currentUsername) return false;
@@ -37,74 +49,78 @@ export const UserList: React.FC<UserListProps> = ({
   };
 
   return (
-    <div className="grid gap-3">
+    <Stack spacing={2}>
       {activeSuperCount <= 1 && (
-        <div className="text-xs p-3 rounded border bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-brand-yellow/10 dark:border-brand-yellow/20 dark:text-brand-yellow">
-          当前仅剩 1 个启用的超级管理员，系统会阻止“停用/删除最后一个超级管理员”。
-        </div>
+        <Alert severity="warning">
+          当前仅剩 1 个启用的超级管理员，系统会阻止"停用/删除最后一个超级管理员"。
+        </Alert>
       )}
 
       {users.map((u) => (
-        <div
-          key={u.username}
-          className="bg-white dark:bg-brand-card p-4 rounded border border-slate-200 dark:border-brand-blue/10 flex justify-between items-center"
-        >
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-800 dark:text-white">{u.displayName}</span>
-              <span className="text-xs text-slate-400">@{u.username}</span>
-              {u.role === UserRole.SUPER ? (
-                <span className="badge bg-purple-100 text-purple-600 border-purple-200">管理员</span>
-              ) : (
-                <span className="badge bg-blue-50 text-blue-600 border-blue-200">Mod作者/协作者</span>
+        <Card key={u.username} variant="outlined">
+          <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 2, '&:last-child': { pb: 2 } }}>
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="subtitle1" fontWeight={700}>
+                  {u.displayName}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  @{u.username}
+                </Typography>
+                {u.role === UserRole.SUPER ? (
+                  <Chip label="管理员" size="small" color="secondary" variant="outlined" />
+                ) : (
+                  <Chip label="Mod作者/协作者" size="small" color="primary" variant="outlined" />
+                )}
+                {u.status === UserStatus.DISABLED && (
+                  <Chip label="已停用" size="small" color="default" variant="outlined" />
+                )}
+              </Box>
+              {u.role !== UserRole.SUPER && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  权限: {u.allowedMods?.join(', ') || '无'}
+                </Typography>
               )}
-              {u.status === UserStatus.DISABLED && (
-                <span className="badge bg-slate-100 text-slate-500 border-slate-200">已停用</span>
-              )}
-            </div>
-            {u.role !== UserRole.SUPER && (
-              <div className="text-xs text-slate-500 mt-1">权限: {u.allowedMods?.join(', ') || '无'}</div>
-            )}
-          </div>
+            </Box>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onEdit(u)}
-              disabled={!canManageUser(u)}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors text-sm px-2 py-1 rounded border border-slate-200 dark:border-brand-blue/20 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
-              title="编辑用户"
-            >
-              <Pencil size={14} />
-              编辑
-            </button>
-            <button
-              onClick={() => onResetPassword(u)}
-              disabled={!canManageUser(u)}
-              className="text-slate-400 hover:text-brand-blue transition-colors text-sm px-2 py-1 rounded border border-slate-200 dark:border-brand-blue/20 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="重置密码"
-            >
-              重置密码
-            </button>
-            <button
-              onClick={() => onToggleStatus(u)}
-              disabled={!canDisableOrDeleteUser(u)}
-              className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors text-sm px-2 py-1 rounded border border-slate-200 dark:border-brand-blue/20 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={u.status === UserStatus.ACTIVE ? '停用' : '启用'}
-            >
-              {u.status === UserStatus.ACTIVE ? '停用' : '启用'}
-            </button>
-            <button
-              onClick={() => onDelete(u.username)}
-              disabled={!canDisableOrDeleteUser(u)}
-              className="text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              title="删除用户"
-            >
-              <Trash2 size={18} />
-            </button>
-          </div>
-        </div>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditIcon fontSize="small" />}
+                onClick={() => onEdit(u)}
+                disabled={!canManageUser(u)}
+              >
+                编辑
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => onResetPassword(u)}
+                disabled={!canManageUser(u)}
+              >
+                重置密码
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => onToggleStatus(u)}
+                disabled={!canDisableOrDeleteUser(u)}
+              >
+                {u.status === UserStatus.ACTIVE ? '停用' : '启用'}
+              </Button>
+              <IconButton
+                size="small"
+                onClick={() => onDelete(u.username)}
+                disabled={!canDisableOrDeleteUser(u)}
+                color="error"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          </CardContent>
+        </Card>
       ))}
-    </div>
+    </Stack>
   );
 };
-

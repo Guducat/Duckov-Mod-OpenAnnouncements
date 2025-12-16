@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
+import { Box, Container, Typography, Button, Stack } from '@mui/material';
 import { AuthSession, UserRole } from '../types';
 import { ThemeMode } from '../components/ThemeToggle';
 import { AppHeader } from '../components/layout/AppHeader';
 import { ApiDebugModal } from '../components/layout/ApiDebugModal';
-import { AdminTools } from '../components/AdminTools';
+import { AdminTools } from '../components/admin/AdminTools';
 import { AppRoute } from '../hooks/useHashRoute';
 import { useSessionInfo } from '../hooks/useSessionInfo';
 
@@ -31,7 +32,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   const canAccessAdminTools = !!session && (role === UserRole.SUPER || role === UserRole.EDITOR);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-brand-base text-slate-900 dark:text-brand-white flex flex-col transition-colors duration-300">
+    <Box
+      sx={{
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+        color: 'text.primary',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
       <AppHeader
         activeRoute={activeRoute}
         onNavigate={onNavigate}
@@ -44,17 +53,17 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         onOpenApiModal={() => setIsApiModalOpen(true)}
       />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
+      <Container component="main" maxWidth="lg" sx={{ flex: 1, py: 4 }}>
         {canAccessAdminTools ? (
-          <div className="animate-fade-in">
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-slate-800 dark:text-brand-white">
+          <Box>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h4" component="h1" fontWeight={700} sx={{ mb: 0.5 }}>
                 {role === UserRole.SUPER ? '系统管理面板' : '管理工具'}
-              </h1>
-              <p className="text-slate-500 dark:text-brand-muted">
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
                 {role === UserRole.SUPER ? '管理 Mod 分类、团队成员与 API key' : '管理并生成你的 CI API key'}
-              </p>
-            </div>
+              </Typography>
+            </Box>
             <AdminTools
               token={session.token}
               currentUsername={session.user.username}
@@ -62,31 +71,37 @@ export const AdminPage: React.FC<AdminPageProps> = ({
               role={role}
               allowedModIds={session.user.allowedMods || []}
             />
-          </div>
+          </Box>
         ) : (
-          <div className="bg-white dark:bg-brand-card/50 rounded-xl border border-dashed border-slate-300 dark:border-brand-blue/20 p-8 text-center text-slate-600 dark:text-brand-muted">
-            <div className="font-bold text-slate-800 dark:text-brand-white mb-2">无权限访问管理面板</div>
-            <div className="text-sm mb-6">该页面仅对管理员开放，请登录管理员账号。</div>
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={onLoginClick}
-                className="bg-brand-blue hover:bg-blue-600 dark:bg-brand-yellow dark:hover:bg-yellow-400 text-white dark:text-brand-base font-bold px-4 py-2 rounded-lg transition-colors"
-              >
+          <Box
+            sx={{
+              bgcolor: 'background.paper',
+              borderRadius: 3,
+              border: '1px dashed',
+              borderColor: 'divider',
+              p: 4,
+              textAlign: 'center',
+            }}
+          >
+            <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
+              无权限访问管理面板
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              该页面仅对管理员开放，请登录管理员账号。
+            </Typography>
+            <Stack direction="row" spacing={2} justifyContent="center">
+              <Button variant="contained" onClick={onLoginClick}>
                 去登录
-              </button>
-              <button
-                onClick={() => onNavigate('announcements')}
-                className="px-4 py-2 text-slate-500 hover:text-slate-900 dark:text-brand-muted dark:hover:text-brand-white transition-colors"
-              >
+              </Button>
+              <Button variant="text" onClick={() => onNavigate('announcements')}>
                 返回公告列表
-              </button>
-            </div>
-          </div>
+              </Button>
+            </Stack>
+          </Box>
         )}
-      </main>
+      </Container>
 
-      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} />
-    </div>
+      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} token={session?.token} />
+    </Box>
   );
 };
-
