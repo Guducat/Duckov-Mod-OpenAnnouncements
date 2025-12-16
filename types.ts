@@ -81,3 +81,21 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
+
+export type ApiKeyStatus = 'active' | 'revoked';
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  allowedMods: string[];
+  createdAt: number;
+  createdBy: string;
+  status: ApiKeyStatus;
+  revokedAt?: number;
+  revokedBy?: string;
+  lastUsedAt?: number;
+}
+
+export interface CreateApiKeyResponse extends ApiKey {
+  token: string; // 仅创建时返回一次
+}

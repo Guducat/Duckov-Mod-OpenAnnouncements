@@ -27,7 +27,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   setThemeMode,
   onOpenApiModal
 }) => {
-  const showAdminTab = role === UserRole.SUPER;
+  const showAdminTab = role === UserRole.SUPER || role === UserRole.EDITOR;
   return (
     <header className="bg-white dark:bg-brand-card border-b border-slate-200 dark:border-brand-blue/20 sticky top-0 z-30 shadow-md transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -69,7 +69,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     : 'text-slate-500 dark:text-brand-muted hover:text-slate-700'
                 }`}
               >
-                <Shield size={16} /> <span className="hidden sm:inline">系统管理</span>
+                <Shield size={16} /> <span className="hidden sm:inline">管理工具</span>
               </button>
             )}
           </div>

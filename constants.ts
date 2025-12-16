@@ -1,7 +1,6 @@
 export const APP_NAME = "逃离鸭科夫Mod公告板";
 
 export const API_ENDPOINTS = {
-  SYSTEM_STATUS: '/api/system/status',
   SYSTEM_INIT: '/api/system/init',
   LOGIN: '/api/auth/login',
   CHANGE_PASSWORD: '/api/auth/change-password',
@@ -9,6 +8,7 @@ export const API_ENDPOINTS = {
   UPDATE: '/api/admin/update',
   DELETE: '/api/admin/delete',
   PUBLIC_LIST: '/api/public/list',
+  PUSH_ANNOUNCEMENT: '/api/push/announcement',
   MOD_LIST: '/api/mod/list',
   MOD_CREATE: '/api/mod/create',
   MOD_DELETE: '/api/mod/delete',
@@ -17,7 +17,10 @@ export const API_ENDPOINTS = {
   USER_DELETE: '/api/user/delete',
   USER_UPDATE: '/api/user/update',
   USER_SET_STATUS: '/api/user/set-status',
-  USER_RESET_PASSWORD: '/api/user/reset-password'
+  USER_RESET_PASSWORD: '/api/user/reset-password',
+  APIKEY_CREATE: '/api/apikey/create',
+  APIKEY_LIST: '/api/apikey/list',
+  APIKEY_REVOKE: '/api/apikey/revoke'
 };
 
 // 为演示目的，我们在本地存储中预置一个默认用户

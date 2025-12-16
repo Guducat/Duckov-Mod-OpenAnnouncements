@@ -1,4 +1,15 @@
-import { Announcement, ApiResponse, User, UserRole, AuthSession, ModDefinition, UserStatus, UpdateUserRequest } from '../types';
+import {
+  Announcement,
+  ApiKey,
+  ApiResponse,
+  AuthSession,
+  CreateApiKeyResponse,
+  ModDefinition,
+  User,
+  UserRole,
+  UserStatus,
+  UpdateUserRequest
+} from '../types';
 import { API_ENDPOINTS } from '../constants';
 import { mockKv, initMockDb } from './mockDb';
 
@@ -24,10 +35,19 @@ export const systemService = {
         }
       };
     }
-    const url = API_BASE_URL ? `${API_BASE_URL}${API_ENDPOINTS.SYSTEM_STATUS}` : API_ENDPOINTS.SYSTEM_STATUS;
     try {
-      const res = await fetch(url);
-      return await res.json();
+      // 通过探测 /api/mod/list 判断系统是否初始化：
+      // - 200 => initialized
+      // - 409 => not initialized
+      const res = await fetch(apiUrl(API_ENDPOINTS.MOD_LIST));
+      if (res.status === 409) {
+        return { success: true, data: { initialized: false, rootAdminUsername: null } };
+      }
+      if (res.ok) {
+        return { success: true, data: { initialized: true, rootAdminUsername: null } };
+      }
+      const data = (await res.json()) as ApiResponse<any>;
+      return { success: false, error: data?.error || `HTTP ${res.status}` };
     } catch {
       return { success: false, error: '网络请求失败' };
     }
@@ -92,6 +112,103 @@ const requestJson = async <T>(
 const canAccessMod = (user: User, modId: string): boolean => {
   if (user.role === UserRole.SUPER) return true;
   return user.allowedMods?.includes(modId) || false;
+};
+
+const formatApiKeyError = (res: ApiResponse<any>) => res.error || '请求失败';
+
+export const apiKeyService = {
+  list: async (token: string): Promise<ApiResponse<ApiKey[]>> => {
+    if (USE_MOCK_API) {
+      const session = mockKv.get<AuthSession>(`session:${token}`);
+      if (!session || (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR)) {
+        return { success: false, error: '权限不足' };
+      }
+
+      const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as ApiKey[];
+      const isRoot = session.user.role === UserRole.SUPER && !!session.user.isRootAdmin;
+      const visible = isRoot ? all : all.filter((k) => k.createdBy === session.user.username);
+      return { success: true, data: visible.sort((a, b) => b.createdAt - a.createdAt) };
+    }
+    return requestJson<ApiKey[]>(API_ENDPOINTS.APIKEY_LIST, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+  },
+
+  create: async (
+    token: string,
+    payload: { name: string; allowedMods: string[] }
+  ): Promise<ApiResponse<CreateApiKeyResponse>> => {
+    if (USE_MOCK_API) {
+      const session = mockKv.get<AuthSession>(`session:${token}`);
+      if (!session || (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR)) {
+        return { success: false, error: '权限不足' };
+      }
+
+      const normalizedAllowedMods = (payload.allowedMods || []).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
+      if (normalizedAllowedMods.length === 0) return { success: false, error: '缺少 allowedMods' };
+
+      const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as any[];
+      if (session.user.role === UserRole.EDITOR) {
+        const allowed = new Set((session.user.allowedMods || []).filter(Boolean));
+        if (normalizedAllowedMods.some((id) => !allowed.has(id))) return { success: false, error: '权限不足：所选 Mod 不在你的授权范围内' };
+      }
+
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      const tokenValue = generateToken();
+      const record: CreateApiKeyResponse = {
+        id,
+        name: payload.name || 'ci',
+        allowedMods: Array.from(new Set(normalizedAllowedMods)),
+        createdAt: now,
+        createdBy: session.user.username,
+        status: 'active',
+        token: tokenValue
+      };
+      mockKv.put('SYSTEM_APIKEYS_LIST', [...all, record]);
+      return { success: true, data: record };
+    }
+
+    const res = await requestJson<CreateApiKeyResponse>(API_ENDPOINTS.APIKEY_CREATE, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ name: payload.name, allowedMods: payload.allowedMods })
+    });
+    return res.success ? res : { success: false, error: formatApiKeyError(res) };
+  },
+
+  revoke: async (token: string, id: string): Promise<ApiResponse<void>> => {
+    if (USE_MOCK_API) {
+      const session = mockKv.get<AuthSession>(`session:${token}`);
+      if (!session || (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR)) {
+        return { success: false, error: '权限不足' };
+      }
+
+      const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as any[];
+      const idx = all.findIndex((k) => k.id === id);
+      if (idx === -1) return { success: false, error: 'API key 不存在' };
+
+      const target = all[idx] as ApiKey;
+      const isRoot = session.user.role === UserRole.SUPER && !!session.user.isRootAdmin;
+      if (!isRoot && target.createdBy !== session.user.username) return { success: false, error: '权限不足' };
+
+      all[idx] = { ...all[idx], status: 'revoked', revokedAt: Date.now(), revokedBy: session.user.username };
+      mockKv.put('SYSTEM_APIKEYS_LIST', all);
+      return { success: true };
+    }
+
+    return requestJson<void>(API_ENDPOINTS.APIKEY_REVOKE, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ id })
+    });
+  }
 };
 
 export const authService = {

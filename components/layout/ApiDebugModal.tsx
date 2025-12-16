@@ -4,24 +4,14 @@ import { Modal } from '../Modal';
 interface ApiDebugModalProps {
   isOpen: boolean;
   onClose: () => void;
-  token: string;
 }
 
-export const ApiDebugModal: React.FC<ApiDebugModalProps> = ({ isOpen, onClose, token }) => (
+export const ApiDebugModal: React.FC<ApiDebugModalProps> = ({ isOpen, onClose }) => (
   <Modal isOpen={isOpen} onClose={onClose} title="API 调试">
     <div className="space-y-4">
-      <div className="p-3 bg-blue-50 dark:bg-brand-blue/10 rounded-lg border border-blue-100 dark:border-brand-blue/20">
-        <p className="text-sm text-slate-600 dark:text-brand-muted">API 已启用 CORS，支持 C# 原生请求。</p>
-      </div>
-
       <div>
         <h3 className="font-bold text-slate-700 dark:text-brand-white mb-2">公开接口（无需认证）</h3>
         <div className="space-y-2 font-mono text-sm">
-          <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
-            <span className="text-green-600 dark:text-green-400">GET</span>
-            <span className="ml-2 text-slate-700 dark:text-slate-300">/api/system/status</span>
-            <p className="text-xs text-slate-500 mt-1">检查系统初始化状态</p>
-          </div>
           <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
             <span className="text-green-600 dark:text-green-400">GET</span>
             <span className="ml-2 text-slate-700 dark:text-slate-300">/api/public/list?modId=&#123;modId&#125;</span>
@@ -35,13 +25,41 @@ export const ApiDebugModal: React.FC<ApiDebugModalProps> = ({ isOpen, onClose, t
         </div>
       </div>
 
-      <div className="pt-2 border-t border-slate-200 dark:border-brand-blue/20">
-        <p className="text-xs text-slate-500 dark:text-brand-muted">
-          当前 Token:{' '}
-          <code className="bg-slate-100 dark:bg-brand-card px-1 rounded text-xs break-all">
-            {token || '未登录'}
-          </code>
-        </p>
+      <div>
+        <h3 className="font-bold text-slate-700 dark:text-brand-white mb-2">自动化推送（需要 API key）</h3>
+        <div className="space-y-2 font-mono text-sm">
+          <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
+            <span className="text-blue-600 dark:text-blue-400">POST</span>
+            <span className="ml-2 text-slate-700 dark:text-slate-300">/api/push/announcement</span>
+            <p className="text-xs text-slate-500 mt-1">Body：apiKey/modId/title/content_html 必填，version/content_text 可选</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="font-bold text-slate-700 dark:text-brand-white mb-2">管理接口（需要登录 Bearer Token）</h3>
+        <div className="space-y-2 font-mono text-sm">
+          <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
+            <span className="text-blue-600 dark:text-blue-400">POST</span>
+            <span className="ml-2 text-slate-700 dark:text-slate-300">/api/admin/post</span>
+            <p className="text-xs text-slate-500 mt-1">创建公告（super/editor 且具备 mod 权限）</p>
+          </div>
+          <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
+            <span className="text-blue-600 dark:text-blue-400">POST</span>
+            <span className="ml-2 text-slate-700 dark:text-slate-300">/api/admin/update</span>
+            <p className="text-xs text-slate-500 mt-1">更新公告（super/editor 且具备 mod 权限）</p>
+          </div>
+          <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
+            <span className="text-blue-600 dark:text-blue-400">POST</span>
+            <span className="ml-2 text-slate-700 dark:text-slate-300">/api/apikey/create</span>
+            <p className="text-xs text-slate-500 mt-1">创建 API key（super/editor；Body：allowedMods 可多选）</p>
+          </div>
+          <div className="p-2 bg-slate-100 dark:bg-brand-card rounded border border-slate-200 dark:border-brand-blue/10">
+            <span className="text-green-600 dark:text-green-400">GET</span>
+            <span className="ml-2 text-slate-700 dark:text-slate-300">/api/apikey/list</span>
+            <p className="text-xs text-slate-500 mt-1">列出 API key（super/editor；非系统管理员仅能看到自己创建的）</p>
+          </div>
+        </div>
       </div>
     </div>
   </Modal>

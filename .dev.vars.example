@@ -1,0 +1,4 @@
+# Cloudflare Workers local dev vars (gitignored)
+# 复制为 .dev.vars 后生效：wrangler dev 会自动加载
+INIT_TOKEN=CHANGE_ME_TO_A_SECURE_RANDOM_STRING
+

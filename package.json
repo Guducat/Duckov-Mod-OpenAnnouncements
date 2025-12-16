@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "worker:dev": "wrangler dev --port 8787",
+    "worker:dev": "node scripts/prepare-dev-vars.mjs && wrangler dev --port 8787",
     "worker:deploy": "wrangler deploy"
   },
   "dependencies": {

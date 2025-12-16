@@ -17,6 +17,21 @@ type StoredUser = User & {
   passwordAlgo: 'PBKDF2-SHA256';
 };
 
+type ApiKeyStatus = 'active' | 'revoked';
+
+type ApiKeyRecord = {
+  id: string;
+  name: string;
+  tokenHash: string;
+  allowedMods: string[];
+  createdAt: number;
+  createdBy: string;
+  status: ApiKeyStatus;
+  revokedAt?: number;
+  revokedBy?: string;
+  lastUsedAt?: number;
+};
+
 type Env = {
   ANNOUNCEMENTS_KV: KVNamespace;
   INIT_TOKEN?: string;
@@ -27,7 +42,10 @@ const KV_KEYS = {
   SESSION_PREFIX: 'session:',
   LEGACY_UPDATES_SUFFIX: '_updates',
   SYSTEM_INITIALIZED: 'SYSTEM_INITIALIZED',
-  SYSTEM_ROOT_ADMIN: 'SYSTEM_ROOT_ADMIN'
+  SYSTEM_ROOT_ADMIN: 'SYSTEM_ROOT_ADMIN',
+  API_KEY_PREFIX: 'apikey:',
+  API_KEY_HASH_PREFIX: 'apikey_hash:',
+  API_KEY_OWNER_ACTIVE_PREFIX: 'apikey_owner_active:'
 } as const;
 
 const json = (data: unknown, init: ResponseInit = {}) => {
@@ -40,7 +58,7 @@ const withCors = (res: Response): Response => {
   const headers = new Headers(res.headers);
   headers.set('access-control-allow-origin', '*');
   headers.set('access-control-allow-methods', 'GET,POST,OPTIONS');
-  headers.set('access-control-allow-headers', 'content-type, authorization, x-init-token');
+  headers.set('access-control-allow-headers', 'content-type, authorization, x-init-token, x-api-key');
   headers.set('vary', 'origin');
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 };
@@ -84,6 +102,12 @@ const pbkdf2Sha256 = async (password: string, salt: Uint8Array, iterations: numb
     256
   );
   return new Uint8Array(bits);
+};
+
+const sha256Base64Url = async (input: string): Promise<string> => {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest('SHA-256', enc.encode(input));
+  return base64UrlEncode(new Uint8Array(digest));
 };
 
 const hashPassword = async (
@@ -182,9 +206,85 @@ const getSession = async (req: Request, env: Env): Promise<AuthSession | null> =
   return typed;
 };
 
+const isRootAdminSession = async (session: AuthSession, env: Env): Promise<boolean> => {
+  if (session.user.isRootAdmin) return true;
+  const root = await getRootAdminUsername(env);
+  return !!root && root === session.user.username;
+};
+
 const canAccessMod = (user: User, modId: string): boolean => {
   if (user.role === UserRole.SUPER) return true;
   return user.allowedMods?.includes(modId) || false;
+};
+
+const canApiKeyAccessMod = (apiKey: ApiKeyRecord, modId: string): boolean => {
+  return apiKey.allowedMods.includes(modId);
+};
+
+type CreateAnnouncementInput = {
+  modId: string;
+  version?: string;
+  title: string;
+  content_html: string;
+  content_text?: string;
+  author: string;
+};
+
+const createAnnouncement = async (env: Env, input: CreateAnnouncementInput): Promise<Announcement> => {
+  const unityContent = input.content_text || input.content_html;
+  const version = typeof input.version === 'string' ? input.version.trim() : '';
+  const id = `${Date.now()}_${crypto.randomUUID()}`;
+  const next: Announcement = {
+    id,
+    modId: input.modId,
+    ...(version ? { version } : {}),
+    title: input.title,
+    content_html: input.content_html,
+    content_text: unityContent,
+    author: input.author,
+    timestamp: Date.now()
+  };
+
+  await env.ANNOUNCEMENTS_KV.put(`ann:${input.modId}:${id}`, JSON.stringify(next));
+  return next;
+};
+
+const apiKeyMetaKey = (id: string) => `${KV_KEYS.API_KEY_PREFIX}${id}`;
+const apiKeyHashKey = (tokenHash: string) => `${KV_KEYS.API_KEY_HASH_PREFIX}${tokenHash}`;
+const apiKeyOwnerActiveKey = (username: string) => `${KV_KEYS.API_KEY_OWNER_ACTIVE_PREFIX}${username}`;
+
+const toSafeApiKey = (record: ApiKeyRecord) => {
+  const { tokenHash: _tokenHash, ...safe } = record;
+  return safe;
+};
+
+const normalizeAllowedMods = (mods: unknown): string[] => {
+  if (!Array.isArray(mods)) return [];
+  const uniq = Array.from(new Set(mods.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean)));
+  return uniq;
+};
+
+const getApiKeyByToken = async (rawToken: string, env: Env): Promise<ApiKeyRecord | null> => {
+  const raw = rawToken.trim();
+  if (!raw) return null;
+
+  const tokenHash = await sha256Base64Url(raw);
+  const id = await env.ANNOUNCEMENTS_KV.get(apiKeyHashKey(tokenHash));
+  if (!id) return null;
+
+  const record = (await env.ANNOUNCEMENTS_KV.get(apiKeyMetaKey(id), { type: 'json' })) as ApiKeyRecord | null;
+  if (!record) return null;
+  if (record.status !== 'active') return null;
+  if (record.tokenHash !== tokenHash) return null;
+
+  record.lastUsedAt = Date.now();
+  await env.ANNOUNCEMENTS_KV.put(apiKeyMetaKey(record.id), JSON.stringify(record));
+  return record;
+};
+
+const getApiKeyFromHeader = async (req: Request, env: Env): Promise<ApiKeyRecord | null> => {
+  const raw = (req.headers.get('x-api-key') || '').trim();
+  return getApiKeyByToken(raw, env);
 };
 
 export default {
@@ -205,12 +305,15 @@ export default {
             name: 'Duckov Mod OpenAnnouncements API',
             initialized: await isInitialized(env),
             endpoints: [
-              '/api/system/status',
               '/api/system/init',
               '/api/auth/login',
               '/api/public/list',
+              '/api/push/announcement',
               '/api/admin/post',
-              '/api/admin/delete'
+              '/api/admin/delete',
+              '/api/apikey/create',
+              '/api/apikey/list',
+              '/api/apikey/revoke'
             ]
           }
         })
@@ -225,6 +328,7 @@ export default {
       return withCors(json({ success: true, data: { ok: true, now: Date.now() } }));
     }
 
+    // Deprecated: keep for backward compatibility; prefer probing /api/mod/list (409 => not initialized)
     if (path === '/api/system/status' && req.method === 'GET') {
       const initialized = await isInitialized(env);
       const rootAdminUsername = initialized ? await getRootAdminUsername(env) : null;
@@ -350,6 +454,121 @@ export default {
       user.passwordIterations = pw.passwordIterations;
       user.passwordAlgo = pw.passwordAlgo;
       await putUser(env, user);
+      return withCors(json({ success: true }));
+    }
+
+    // --- API Key 管理（super/editor；editor 仅能管理自己创建的 key） ---
+    if (path === '/api/apikey/list' && req.method === 'GET') {
+      const initError = await requireInitialized(env);
+      if (initError) return initError;
+
+      const session = await getSession(req, env);
+      if (!session) return unauthorized('登录已过期');
+      if (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR) return forbidden('权限不足');
+      const isRootAdmin = session.user.role === UserRole.SUPER ? await isRootAdminSession(session, env) : false;
+
+      const keys: ApiKeyRecord[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await env.ANNOUNCEMENTS_KV.list({ prefix: KV_KEYS.API_KEY_PREFIX, cursor });
+        for (const k of page.keys) {
+          const record = (await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' })) as ApiKeyRecord | null;
+          if (record) keys.push(record);
+        }
+        cursor = page.list_complete ? undefined : page.cursor;
+      } while (cursor);
+
+      keys.sort((a, b) => b.createdAt - a.createdAt);
+      const visible = isRootAdmin ? keys : keys.filter((k) => k.createdBy === session.user.username);
+      return withCors(json({ success: true, data: visible.map(toSafeApiKey) }));
+    }
+
+    if (path === '/api/apikey/create' && req.method === 'POST') {
+      const initError = await requireInitialized(env);
+      if (initError) return initError;
+
+      const session = await getSession(req, env);
+      if (!session) return unauthorized('登录已过期');
+      if (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR) return forbidden('权限不足');
+
+      const body = await readJson<{ name?: string; modId?: string; allowedMods?: unknown }>(req);
+      const name = typeof body?.name === 'string' && body.name.trim() ? body.name.trim() : 'ci';
+
+      let allowedMods: string[] = [];
+      if (session.user.role === UserRole.EDITOR) {
+        const requested = body?.allowedMods ? normalizeAllowedMods(body.allowedMods) : [];
+        const fallbackModId = typeof body?.modId === 'string' ? body.modId.trim() : '';
+        const candidates = requested.length ? requested : (fallbackModId ? [fallbackModId] : []);
+        if (candidates.length === 0) return badRequest('缺少 modId 或 allowedMods');
+
+        const allowedSet = new Set((session.user.allowedMods || []).filter(Boolean));
+        allowedMods = candidates.filter((id) => allowedSet.has(id));
+        if (allowedMods.length === 0) return forbidden('权限不足：所选 Mod 不在你的授权范围内');
+      } else {
+        allowedMods = body?.modId ? [String(body.modId).trim()].filter(Boolean) : normalizeAllowedMods(body?.allowedMods);
+        if (allowedMods.length === 0) return badRequest('缺少 modId 或 allowedMods');
+      }
+
+      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const modSet = new Set(mods.map((m) => m.id));
+      const unknown = allowedMods.filter((id) => !modSet.has(id));
+      if (unknown.length) return badRequest(`Mod 不存在：${unknown.join(', ')}`);
+
+      const rawToken = randomToken();
+      const tokenHash = await sha256Base64Url(rawToken);
+      const id = crypto.randomUUID();
+      const record: ApiKeyRecord = {
+        id,
+        name,
+        tokenHash,
+        allowedMods,
+        createdAt: Date.now(),
+        createdBy: session.user.username,
+        status: 'active'
+      };
+
+      await Promise.all([
+        env.ANNOUNCEMENTS_KV.put(apiKeyMetaKey(id), JSON.stringify(record)),
+        env.ANNOUNCEMENTS_KV.put(apiKeyHashKey(tokenHash), id),
+        // 兼容/可观测：记录“该账号最近创建的 key id”（不作为唯一约束）
+        env.ANNOUNCEMENTS_KV.put(apiKeyOwnerActiveKey(session.user.username), id)
+      ]);
+
+      return withCors(json({ success: true, data: { ...toSafeApiKey(record), token: rawToken } }));
+    }
+
+    if (path === '/api/apikey/revoke' && req.method === 'POST') {
+      const initError = await requireInitialized(env);
+      if (initError) return initError;
+
+      const session = await getSession(req, env);
+      if (!session) return unauthorized('登录已过期');
+      if (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR) return forbidden('权限不足');
+      const isRootAdmin = session.user.role === UserRole.SUPER ? await isRootAdminSession(session, env) : false;
+
+      const body = await readJson<{ id?: string }>(req);
+      const id = typeof body?.id === 'string' ? body.id.trim() : '';
+      if (!id) return badRequest('缺少 id');
+
+      const record = (await env.ANNOUNCEMENTS_KV.get(apiKeyMetaKey(id), { type: 'json' })) as ApiKeyRecord | null;
+      if (!record) return badRequest('API key 不存在');
+
+      if (!isRootAdmin && record.createdBy !== session.user.username) return forbidden('权限不足');
+
+      if (record.status === 'revoked') return withCors(json({ success: true }));
+      record.status = 'revoked';
+      record.revokedAt = Date.now();
+      record.revokedBy = session.user.username;
+
+      const ownerActiveKey = apiKeyOwnerActiveKey(record.createdBy);
+      const activeId = await env.ANNOUNCEMENTS_KV.get(ownerActiveKey);
+      const shouldClearOwnerActive = activeId === record.id;
+
+      await Promise.all([
+        env.ANNOUNCEMENTS_KV.put(apiKeyMetaKey(id), JSON.stringify(record)),
+        env.ANNOUNCEMENTS_KV.delete(apiKeyHashKey(record.tokenHash)),
+        ...(shouldClearOwnerActive ? [env.ANNOUNCEMENTS_KV.delete(ownerActiveKey)] : [])
+      ]);
       return withCors(json({ success: true }));
     }
 
@@ -607,6 +826,42 @@ export default {
       return withCors(json({ success: true, data: safe }));
     }
 
+    // --- 自动化推送公告（API key） ---
+    if (path === '/api/push/announcement' && req.method === 'POST') {
+      const initError = await requireInitialized(env);
+      if (initError) return initError;
+
+      const body = await readJson<{
+        apiKey?: string;
+        modId?: string;
+        version?: string;
+        title?: string;
+        content_html?: string;
+        content_text?: string;
+      }>(req);
+
+      const rawApiKey = typeof body?.apiKey === 'string' ? body.apiKey : '';
+      const apiKey = rawApiKey ? await getApiKeyByToken(rawApiKey, env) : await getApiKeyFromHeader(req, env);
+      if (!apiKey) return unauthorized('API key 无效或已失效');
+
+      if (!body?.modId || !body?.title || !body?.content_html) return badRequest('缺少公告信息');
+
+      if (!canApiKeyAccessMod(apiKey, body.modId)) {
+        return forbidden(`权限不足：该 API key 无权向 Mod [${body.modId}] 发布公告`);
+      }
+
+      const next = await createAnnouncement(env, {
+        modId: body.modId,
+        version: body.version,
+        title: body.title,
+        content_html: body.content_html,
+        content_text: body.content_text || body.content_html,
+        author: `api:${apiKey.name || apiKey.id}`
+      });
+
+      return withCors(json({ success: true, data: next }));
+    }
+
     // --- 公开公告接口 ---
     if (path === '/api/public/list' && req.method === 'GET') {
       const initError = await requireInitialized(env);
@@ -676,21 +931,14 @@ export default {
         return forbidden(`权限不足：您无权向 Mod [${body.modId}] 发布公告`);
       }
 
-      const unityContent = body.content_text || body.content_html;
-      const version = typeof body.version === 'string' ? body.version.trim() : '';
-      const id = `${Date.now()}_${crypto.randomUUID()}`;
-      const next: Announcement = {
-        id,
+      const next = await createAnnouncement(env, {
         modId: body.modId,
-        ...(version ? { version } : {}),
+        version: body.version,
         title: body.title,
         content_html: body.content_html,
-        content_text: unityContent,
-        author: session.user.displayName || session.user.username,
-        timestamp: Date.now()
-      };
-
-      await env.ANNOUNCEMENTS_KV.put(`ann:${body.modId}:${id}`, JSON.stringify(next));
+        content_text: body.content_text || body.content_html,
+        author: session.user.displayName || session.user.username
+      });
       return withCors(json({ success: true, data: next }));
     }
 

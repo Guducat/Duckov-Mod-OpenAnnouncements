@@ -14,11 +14,13 @@ const KV_KEYS = {
   UPDATES_SUFFIX: '_updates'
 };
 
+const SHOULD_SEED_USERS = (import.meta.env.VITE_MOCK_SEED_USERS ?? 'false').toLowerCase() === 'true';
+
 // 初始化模拟数据库
 export const initMockDb = () => {
   // 初始化用户
   const users = localStorage.getItem(KV_KEYS.USERS);
-  if (!users) {
+  if (!users && SHOULD_SEED_USERS) {
     const initialUsers: User[] = [
 	      {
 	        username: MOCK_SEED_USER.username,

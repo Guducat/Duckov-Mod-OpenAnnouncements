@@ -30,7 +30,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const {
     role,
-    token,
     announcements,
     availableMods,
     currentModId,
@@ -133,9 +132,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           isSubmitting={isEditSubmitting}
           onSubmit={handleEdit}
         />
-      )}
+  )}
 
-      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} token={token} />
+      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} />
     </div>
   );
 };

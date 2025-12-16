@@ -98,3 +98,4 @@ Desktop.ini
 *.tar.gz
 .history/
 .eslintcache
+/.claude/

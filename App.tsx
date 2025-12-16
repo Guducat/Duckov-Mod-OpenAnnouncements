@@ -27,6 +27,7 @@ const CloudflareLogo: React.FC<{ size?: number; className?: string }> = ({
 );
 
 const App: React.FC = () => {
+  const isMockApi = (import.meta.env.VITE_USE_MOCK_API ?? 'true').toLowerCase() !== 'false';
   const [session, setSession] = useState<AuthSession | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -324,7 +325,15 @@ const App: React.FC = () => {
           </div>
 
           <div className="p-3 bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg text-amber-700 dark:text-amber-400 text-sm">
-            请输入在 Cloudflare Dashboard 中设置的 <code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">INIT_TOKEN</code> 密钥
+            {isMockApi ? (
+              <>
+                当前为 Mock 模式（LocalStorage）。<code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">INIT_TOKEN</code> 仅用于演示，可填写任意内容。
+              </>
+            ) : (
+              <>
+                请输入 <code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">INIT_TOKEN</code>（云端在 Cloudflare Dashboard/Secrets 设置；本地 wrangler dev 请在项目根目录创建 <code className="bg-amber-100 dark:bg-amber-500/20 px-1 rounded">.dev.vars</code>）
+              </>
+            )}
           </div>
 
           <form onSubmit={handleSystemInit} className="space-y-4">

@@ -27,7 +27,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({
   onNavigate
 }) => {
   const [isApiModalOpen, setIsApiModalOpen] = useState(false);
-  const { role, token } = useSessionInfo(session);
+  const { role } = useSessionInfo(session);
+  const canAccessAdminTools = !!session && (role === UserRole.SUPER || role === UserRole.EDITOR);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-brand-base text-slate-900 dark:text-brand-white flex flex-col transition-colors duration-300">
@@ -44,16 +45,22 @@ export const AdminPage: React.FC<AdminPageProps> = ({
       />
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
-        {session && role === UserRole.SUPER ? (
+        {canAccessAdminTools ? (
           <div className="animate-fade-in">
             <div className="mb-6">
-              <h1 className="text-2xl font-bold text-slate-800 dark:text-brand-white">系统管理面板</h1>
-              <p className="text-slate-500 dark:text-brand-muted">管理 Mod 分类与团队成员权限</p>
+              <h1 className="text-2xl font-bold text-slate-800 dark:text-brand-white">
+                {role === UserRole.SUPER ? '系统管理面板' : '管理工具'}
+              </h1>
+              <p className="text-slate-500 dark:text-brand-muted">
+                {role === UserRole.SUPER ? '管理 Mod 分类、团队成员与 API key' : '管理并生成你的 CI API key'}
+              </p>
             </div>
             <AdminTools
               token={session.token}
               currentUsername={session.user.username}
               isRootAdmin={!!session.user.isRootAdmin}
+              role={role}
+              allowedModIds={session.user.allowedMods || []}
             />
           </div>
         ) : (
@@ -78,7 +85,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({
         )}
       </main>
 
-      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} token={token} />
+      <ApiDebugModal isOpen={isApiModalOpen} onClose={() => setIsApiModalOpen(false)} />
     </div>
   );
 };
