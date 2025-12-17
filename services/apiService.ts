@@ -117,6 +117,81 @@ const canAccessMod = (user: User, modId: string): boolean => {
 
 const formatApiKeyError = (res: ApiResponse<any>) => res.error || '请求失败';
 
+const normalizeString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const normalizeNumber = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+};
+
+const normalizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const normalizeStoredApiKey = (raw: unknown): ApiKey | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  const id = normalizeString(r.id);
+  const createdBy = normalizeString(r.createdBy);
+  const createdAt = normalizeNumber(r.createdAt);
+  if (!id || !createdBy || !createdAt) return null;
+
+  const name = normalizeString(r.name) ?? 'ci';
+  const allowedMods = normalizeStringArray(r.allowedMods);
+  const status: ApiKey['status'] = r.status === 'revoked' ? 'revoked' : 'active';
+
+  const next: ApiKey = { id, name, allowedMods, createdAt, createdBy, status };
+
+  const revokedAt = normalizeNumber(r.revokedAt);
+  if (revokedAt) next.revokedAt = revokedAt;
+
+  const revokedBy = normalizeString(r.revokedBy);
+  if (revokedBy) next.revokedBy = revokedBy;
+
+  const lastUsedAt = normalizeNumber(r.lastUsedAt);
+  if (lastUsedAt) next.lastUsedAt = lastUsedAt;
+
+  return next;
+};
+
+const readMockApiKeys = (): ApiKey[] => {
+  const raw = mockKv.get<unknown>('SYSTEM_APIKEYS_LIST');
+  if (!Array.isArray(raw)) return [];
+
+  const normalized: ApiKey[] = [];
+  let needsRewrite = false;
+  for (const item of raw) {
+    const record = normalizeStoredApiKey(item);
+    if (!record) {
+      needsRewrite = true;
+      continue;
+    }
+
+    if (item && typeof item === 'object' && 'token' in (item as Record<string, unknown>)) {
+      // migration: mock 历史数据曾存储明文 token（与生产行为不一致）
+      needsRewrite = true;
+    }
+
+    normalized.push(record);
+  }
+
+  if (needsRewrite) mockKv.put('SYSTEM_APIKEYS_LIST', normalized);
+  return normalized;
+};
+
 export const apiKeyService = {
   list: async (token: string): Promise<ApiResponse<ApiKey[]>> => {
     if (USE_MOCK_API) {
@@ -125,7 +200,7 @@ export const apiKeyService = {
         return { success: false, error: '权限不足' };
       }
 
-      const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as ApiKey[];
+      const all = readMockApiKeys();
       const isRoot = session.user.role === UserRole.SUPER && !!session.user.isRootAdmin;
       const visible = isRoot ? all : all.filter((k) => k.createdBy === session.user.username);
       return { success: true, data: visible.sort((a, b) => b.createdAt - a.createdAt) };
@@ -148,7 +223,7 @@ export const apiKeyService = {
       const normalizedAllowedMods = (payload.allowedMods || []).filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim());
       if (normalizedAllowedMods.length === 0) return { success: false, error: '缺少 allowedMods' };
 
-      const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as any[];
+      const all = readMockApiKeys();
       if (session.user.role === UserRole.EDITOR) {
         if (normalizedAllowedMods.some((id) => !isAllowedModId(session.user.allowedMods || [], id))) {
           return { success: false, error: '权限不足：所选 Mod 不在你的授权范围内' };
@@ -158,17 +233,16 @@ export const apiKeyService = {
       const id = crypto.randomUUID();
       const now = Date.now();
       const tokenValue = generateToken();
-      const record: CreateApiKeyResponse = {
+      const stored: ApiKey = {
         id,
         name: payload.name || 'ci',
         allowedMods: Array.from(new Set(normalizedAllowedMods)),
         createdAt: now,
         createdBy: session.user.username,
-        status: 'active',
-        token: tokenValue
+        status: 'active'
       };
-      mockKv.put('SYSTEM_APIKEYS_LIST', [...all, record]);
-      return { success: true, data: record };
+      mockKv.put('SYSTEM_APIKEYS_LIST', [...all, stored]);
+      return { success: true, data: { ...stored, token: tokenValue } };
     }
 
     const res = await requestJson<CreateApiKeyResponse>(API_ENDPOINTS.APIKEY_CREATE, {
@@ -189,7 +263,7 @@ export const apiKeyService = {
         return { success: false, error: '权限不足' };
       }
 
-      const all = (mockKv.get<any[]>('SYSTEM_APIKEYS_LIST') || []) as any[];
+      const all = readMockApiKeys();
       const idx = all.findIndex((k) => k.id === id);
       if (idx === -1) return { success: false, error: 'API key 不存在' };
 

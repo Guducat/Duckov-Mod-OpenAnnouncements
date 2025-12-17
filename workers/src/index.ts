@@ -46,7 +46,8 @@ const KV_KEYS = {
   SYSTEM_ROOT_ADMIN: 'SYSTEM_ROOT_ADMIN',
   API_KEY_PREFIX: 'apikey:',
   API_KEY_HASH_PREFIX: 'apikey_hash:',
-  API_KEY_OWNER_ACTIVE_PREFIX: 'apikey_owner_active:'
+  API_KEY_OWNER_ACTIVE_PREFIX: 'apikey_owner_active:',
+  API_KEY_LAST_USED_PREFIX: 'apikey_last_used:'
 } as const;
 
 const json = (data: unknown, init: ResponseInit = {}) => {
@@ -267,6 +268,23 @@ const createAnnouncement = async (env: Env, input: CreateAnnouncementInput): Pro
 const apiKeyMetaKey = (id: string) => `${KV_KEYS.API_KEY_PREFIX}${id}`;
 const apiKeyHashKey = (tokenHash: string) => `${KV_KEYS.API_KEY_HASH_PREFIX}${tokenHash}`;
 const apiKeyOwnerActiveKey = (username: string) => `${KV_KEYS.API_KEY_OWNER_ACTIVE_PREFIX}${username}`;
+const apiKeyLastUsedKey = (id: string) => `${KV_KEYS.API_KEY_LAST_USED_PREFIX}${id}`;
+
+const parseEpochMs = (raw: string | null): number | undefined => {
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+};
+
+const getApiKeyLastUsedAt = async (env: Env, id: string): Promise<number | undefined> => {
+  try {
+    const raw = await env.ANNOUNCEMENTS_KV.get(apiKeyLastUsedKey(id));
+    return parseEpochMs(raw);
+  } catch {
+    return undefined;
+  }
+};
 
 const toSafeApiKey = (record: ApiKeyRecord) => {
   const { tokenHash: _tokenHash, ...safe } = record;
@@ -298,8 +316,10 @@ const getApiKeyByToken = async (rawToken: string, env: Env): Promise<ApiKeyRecor
   if (record.status !== 'active') return null;
   if (record.tokenHash !== tokenHash) return null;
 
-  record.lastUsedAt = Date.now();
-  await env.ANNOUNCEMENTS_KV.put(apiKeyMetaKey(record.id), JSON.stringify(record));
+  // 单独记录使用时间，避免覆盖 /api/apikey/revoke 对 record 的更新（KV last-write-wins）。
+  const usedAt = Date.now();
+  record.lastUsedAt = usedAt;
+  await env.ANNOUNCEMENTS_KV.put(apiKeyLastUsedKey(record.id), String(usedAt));
   return record;
 };
 
@@ -501,7 +521,16 @@ export default {
 
       keys.sort((a, b) => b.createdAt - a.createdAt);
       const visible = isRootAdmin ? keys : keys.filter((k) => k.createdBy === session.user.username);
-      return withCors(json({ success: true, data: visible.map(toSafeApiKey) }));
+      const data = await Promise.all(
+        visible.map(async (record) => {
+          const safe = toSafeApiKey(record);
+          const externalLastUsedAt = await getApiKeyLastUsedAt(env, record.id);
+          const mergedLastUsedAt = Math.max(record.lastUsedAt ?? 0, externalLastUsedAt ?? 0) || undefined;
+          if (mergedLastUsedAt) safe.lastUsedAt = mergedLastUsedAt;
+          return safe;
+        })
+      );
+      return withCors(json({ success: true, data }));
     }
 
     if (path === '/api/apikey/create' && req.method === 'POST') {

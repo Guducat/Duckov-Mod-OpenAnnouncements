@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Card,
   CardContent,
@@ -19,6 +19,7 @@ import CodeIcon from '@mui/icons-material/Code';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Announcement, UserRole } from '@/types';
+import { sanitizeHtml } from '@/utils/sanitizeHtml';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface AnnouncementCardProps {
@@ -42,6 +43,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
   const [copied, setCopied] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const safeContentHtml = useMemo(() => sanitizeHtml(data.content_html), [data.content_html]);
 
   // 检查内容是否溢出（需要“展开”按钮）
   useEffect(() => {
@@ -56,7 +58,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
     // Re-check on window resize
     window.addEventListener('resize', checkOverflow);
     return () => window.removeEventListener('resize', checkOverflow);
-  }, [data.content_html, expanded]);
+  }, [safeContentHtml, expanded]);
 
   const dateStr = new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
@@ -218,7 +220,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
                 overflow: 'hidden',
               }),
             }}
-            dangerouslySetInnerHTML={{ __html: data.content_html }}
+            dangerouslySetInnerHTML={{ __html: safeContentHtml }}
           />
 
           {/* Expand Button - only show when content is truncated */}
