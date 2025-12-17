@@ -372,10 +372,20 @@ pnpm preview
 | `pnpm dev` | 启动前端开发服务器 |
 | `pnpm build` | 构建生产版本 |
 | `pnpm preview` | 预览生产构建 |
+| `pnpm test` | 运行单元测试（Vitest） |
+| `pnpm test:coverage` | 运行测试并生成覆盖率（lcov） |
 | `pnpm typecheck` | TypeScript 类型检查 |
 | `pnpm worker:dev` | 启动 Worker 开发服务器 |
 | `pnpm worker:deploy` | 部署 Worker 到生产环境 |
 | `pnpm check` | 完整检查（类型 + 构建） |
+
+---
+
+## ✅ CI / Codecov
+
+- CI 工作流：`.github/workflows/ci.yml`（`pnpm install` → `pnpm check` → `pnpm test:coverage`）。
+- 覆盖率上传：使用 `codecov/codecov-action@v5` 上传 `coverage/lcov.info`。
+- 若仓库为私有：在 Codecov 为该仓库生成 Token，并在 GitHub 仓库 `Settings → Secrets and variables → Actions` 新增 `CODECOV_TOKEN`。
 
 ---
 

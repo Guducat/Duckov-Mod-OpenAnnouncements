@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "typecheck:worker": "tsc -p workers/tsconfig.json --noEmit",
     "check": "npm run -s typecheck && npm run -s typecheck:worker && npm run -s build",
@@ -34,8 +36,10 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
+    "@vitest/coverage-v8": "^4.0.16",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
+    "vitest": "^4.0.16",
     "wrangler": "latest"
   }
 }
