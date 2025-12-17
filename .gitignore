@@ -66,6 +66,7 @@ lerna-debug.log*
 coverage/
 *.lcov
 .nyc_output/
+junit.xml
 
 # ============================================
 # 临时文件
