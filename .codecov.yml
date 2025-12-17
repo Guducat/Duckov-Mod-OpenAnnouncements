@@ -1,0 +1,16 @@
+ignore:
+  - "dist/**"
+  - "node_modules/**"
+  - "public/**"
+  - "scripts/**"
+  - "coverage/**"
+  - "**/*.config.*"
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true

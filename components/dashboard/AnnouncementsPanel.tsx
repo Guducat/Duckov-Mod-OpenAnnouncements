@@ -1,6 +1,18 @@
 import React from 'react';
-import { RefreshCw, Plus } from 'lucide-react';
-import { Announcement, ModDefinition, UserRole } from '../../types';
+import {
+  Box,
+  Typography,
+  Button,
+  IconButton,
+  Alert,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  CircularProgress,
+} from '@mui/material';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import AddIcon from '@mui/icons-material/Add';
+import { Announcement, ModDefinition, UserRole } from '@/types';
 import { AnnouncementCard } from '../AnnouncementCard';
 
 interface AnnouncementsPanelProps {
@@ -10,9 +22,10 @@ interface AnnouncementsPanelProps {
   onSelectMod: (modId: string) => void;
   loadError: string;
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh: (opts?: { force?: boolean }) => void;
   onOpenCreateModal: () => void;
   role: UserRole;
+  canEditCurrentMod: boolean;
   currentModName: string;
   onDelete: (id: string) => void;
   onEdit: (announcement: Announcement) => void;
@@ -28,14 +41,16 @@ export const AnnouncementsPanel: React.FC<AnnouncementsPanelProps> = ({
   onRefresh,
   onOpenCreateModal,
   role,
+  canEditCurrentMod,
   currentModName,
   onDelete,
-  onEdit
+  onEdit,
 }) => {
   const hasMods = availableMods.length > 0;
+
   const renderEmptyState = () => {
     if (!hasMods) {
-      return '您当前没有访问任何 Mod 公告板的权限。';
+      return '您当前没有访问任何 Mod 公告的权限。';
     }
     return (
       <span>
@@ -45,69 +60,143 @@ export const AnnouncementsPanel: React.FC<AnnouncementsPanelProps> = ({
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-brand-white mb-3">公告列表</h1>
-          <div className="flex flex-wrap gap-2">
-            {hasMods
-              ? availableMods.map((mod) => (
-                  <button
-                    type="button"
-                    key={mod.id}
-                    onClick={() => onSelectMod(mod.id)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all border ${
-                      currentModId === mod.id
-                        ? 'bg-brand-blue dark:bg-brand-yellow text-white dark:text-brand-base border-brand-blue dark:border-brand-yellow shadow-md'
-                        : 'bg-white dark:bg-brand-card text-slate-600 dark:text-brand-muted border-slate-200 dark:border-brand-blue/20 hover:border-brand-blue dark:hover:border-brand-yellow'
-                    }`}
-                  >
+    <Box>
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          mb: 3,
+          gap: 2,
+        }}
+      >
+        <Box>
+          <Typography variant="h2" component="h1" sx={{ mb: 2 }}>
+            公告列表
+          </Typography>
+
+          {/* Mod Selector */}
+          {hasMods ? (
+            <Stack spacing={1.25}>
+              <ToggleButtonGroup
+                value={currentModId}
+                exclusive
+                onChange={(_, newValue) => {
+                  if (newValue !== null) {
+                    onSelectMod(newValue);
+                  }
+                }}
+                size="small"
+                sx={{
+                  flexWrap: 'wrap',
+                  gap: 0.5,
+                  '& .MuiToggleButton-root': {
+                    border: 1,
+                    borderColor: 'divider',
+                    borderRadius: '8px !important',
+                    px: 2,
+                    py: 0.75,
+                    textTransform: 'none',
+                    fontWeight: 500,
+                    '&.Mui-selected': {
+                      bgcolor: 'primary.main',
+                      color: 'primary.contrastText',
+                      borderColor: 'primary.main',
+                      '&:hover': {
+                        bgcolor: 'primary.dark',
+                      },
+                    },
+                  },
+                }}
+              >
+                {availableMods.map((mod) => (
+                  <ToggleButton key={mod.id} value={mod.id}>
                     {mod.name}
-                  </button>
-                ))
-              : (
-                <span className="text-sm text-slate-500 dark:text-brand-muted">无权限或无数据</span>
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+
+              {role === UserRole.EDITOR && !canEditCurrentMod && (
+                <Alert severity="info" sx={{ py: 0.5 }}>
+                  当前 Mod 仅可查看，暂无编辑/发布权限（如需编辑请联系管理员授权）。
+                </Alert>
               )}
-          </div>
-        </div>
-
-        <div className="flex gap-3 shrink-0">
-          <button
-            onClick={onRefresh}
-            className="p-2 text-slate-500 hover:text-brand-blue hover:bg-white dark:text-brand-muted dark:hover:text-brand-yellow dark:hover:bg-brand-card rounded-lg transition-colors border border-transparent hover:border-slate-200 dark:hover:border-transparent"
-            title="刷新列表"
-          >
-            <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
-          </button>
-          {role !== UserRole.GUEST && (
-            <button
-              onClick={onOpenCreateModal}
-              disabled={!hasMods}
-              className="flex items-center gap-2 bg-brand-blue hover:bg-blue-600 dark:bg-brand-yellow dark:hover:bg-yellow-400 text-white dark:text-brand-base font-bold px-4 py-2 rounded-lg transition-colors shadow-lg shadow-blue-900/10 dark:shadow-yellow-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Plus size={20} />
-              新建公告
-            </button>
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              无权限或无数据
+            </Typography>
           )}
-        </div>
-      </div>
+        </Box>
 
+        {/* Actions */}
+        <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+          <IconButton
+            onClick={() => onRefresh({ force: true })}
+            title="刷新列表"
+            sx={{
+              border: 1,
+              borderColor: 'transparent',
+              '&:hover': {
+                borderColor: 'divider',
+              },
+            }}
+          >
+            <RefreshIcon
+              sx={{
+                animation: loading ? 'spin 1s linear infinite' : 'none',
+                '@keyframes spin': {
+                  '0%': { transform: 'rotate(0deg)' },
+                  '100%': { transform: 'rotate(360deg)' },
+                },
+              }}
+            />
+          </IconButton>
+          {role !== UserRole.GUEST && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={onOpenCreateModal}
+              disabled={!hasMods || !canEditCurrentMod}
+            >
+              新建公告
+            </Button>
+          )}
+        </Stack>
+      </Box>
+
+      {/* Error Alert */}
       {loadError && (
-        <div className="mb-6 text-sm p-3 rounded border bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/40 dark:text-red-300">
+        <Alert severity="error" sx={{ mb: 3 }}>
           {loadError}
-        </div>
+        </Alert>
       )}
 
+      {/* Content */}
       {loading && announcements.length === 0 ? (
-        <div className="text-center py-20 text-slate-500 dark:text-brand-muted">加载中...</div>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
+          <CircularProgress />
+        </Box>
       ) : (
         <>
           {announcements.length === 0 ? (
-            <div className="text-center py-20 bg-white dark:bg-brand-card/50 rounded-xl border border-dashed border-slate-300 dark:border-brand-blue/20 text-slate-500 dark:text-brand-muted">
+            <Box
+              sx={{
+                textAlign: 'center',
+                py: 10,
+                bgcolor: 'background.paper',
+                borderRadius: 2,
+                border: '1px dashed',
+                borderColor: 'divider',
+                color: 'text.secondary',
+              }}
+            >
               {renderEmptyState()}
-            </div>
+            </Box>
           ) : (
-            <div className="space-y-4">
+            <Stack spacing={2}>
               {announcements.map((announcement) => (
                 <AnnouncementCard
                   key={announcement.id}
@@ -115,13 +204,13 @@ export const AnnouncementsPanel: React.FC<AnnouncementsPanelProps> = ({
                   modName={currentModName}
                   userRole={role}
                   onDelete={onDelete}
-                  onEdit={onEdit}
+                  onEdit={canEditCurrentMod ? onEdit : undefined}
                 />
               ))}
-            </div>
+            </Stack>
           )}
         </>
       )}
-    </div>
+    </Box>
   );
 };

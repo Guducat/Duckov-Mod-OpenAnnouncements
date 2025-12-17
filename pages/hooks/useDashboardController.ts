@@ -1,8 +1,28 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { announcementService, modService } from '../../services/apiService';
-import { useSessionInfo } from '../../hooks/useSessionInfo';
-import { Announcement, AuthSession, ModDefinition, UserRole } from '../../types';
-import { compareVersionTagDesc } from '../../utils/version';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { announcementService, modService } from '@/services/apiService';
+import { useSessionInfo } from '@/hooks/useSessionInfo';
+import { Announcement, AuthSession, ModDefinition, UserRole } from '@/types';
+import { isAllowedModId } from '@/utils/modId';
+import { compareVersionTagDesc } from '@/utils/version';
+
+type LocalCache<T> = {
+  fetchedAt: number;
+  data: T;
+};
+
+const isReloadNavigation = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const entries = performance.getEntriesByType?.('navigation') as PerformanceNavigationTiming[] | undefined;
+    const nav = entries?.[0];
+    if (nav && typeof nav.type === 'string') return nav.type === 'reload';
+    // Fallback for older browsers
+    const legacy = (performance as any).navigation?.type;
+    return legacy === 1;
+  } catch {
+    return false;
+  }
+};
 
 const normalizeVersionTag = (value: string): string | undefined => {
   const trimmed = value.trim();
@@ -22,13 +42,14 @@ const sortAnnouncementsByVersion = (list: Announcement[]): Announcement[] => {
 interface UseDashboardControllerResult {
   token: string;
   role: UserRole;
+  canEditCurrentMod: boolean;
   announcements: Announcement[];
   availableMods: ModDefinition[];
   currentModId: string;
   selectMod: (modId: string) => void;
   loading: boolean;
   loadError: string;
-  refreshAnnouncements: () => Promise<void>;
+  refreshAnnouncements: (opts?: { force?: boolean }) => Promise<void>;
   isCreateModalOpen: boolean;
   openCreateModal: () => void;
   closeCreateModal: () => void;
@@ -57,6 +78,40 @@ interface UseDashboardControllerResult {
 
 export const useDashboardController = (session: AuthSession | null): UseDashboardControllerResult => {
   const SELECTED_MOD_STORAGE_KEY = 'selected_mod_id';
+  const MODS_CACHE_KEY = 'dashboard_cache_mods_v1';
+  const announcementsCacheKey = (modId: string) => `dashboard_cache_announcements_v1:${modId}`;
+  const CACHE_TTL_MS = 5 * 60 * 60 * 1000; // 5 小时
+
+  const forceReloadModsOnceRef = useRef(isReloadNavigation());
+  const forceReloadAnnouncementsOnceRef = useRef(isReloadNavigation());
+
+  const readCache = useCallback(<T,>(key: string): LocalCache<T> | null => {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as Partial<LocalCache<T>>;
+      if (!parsed || typeof parsed !== 'object') return null;
+      if (typeof parsed.fetchedAt !== 'number') return null;
+      if (!('data' in parsed)) return null;
+      return parsed as LocalCache<T>;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const writeCache = useCallback(<T,>(key: string, data: T) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const payload: LocalCache<T> = { fetchedAt: Date.now(), data };
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch {
+      // ignore storage quota / blocked storage
+    }
+  }, []);
+
+  const isFresh = useCallback((fetchedAt: number) => Date.now() - fetchedAt < CACHE_TTL_MS, [CACHE_TTL_MS]);
+
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [availableMods, setAvailableMods] = useState<ModDefinition[]>([]);
   const [currentModId, setCurrentModId] = useState(() => {
@@ -81,54 +136,90 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
 
   const { role, token } = useSessionInfo(session);
 
-  const loadMods = useCallback(async () => {
+  const canEditMod = useCallback(
+    (modId: string): boolean => {
+      if (!modId) return false;
+      if (role === UserRole.SUPER) return true;
+      if (role === UserRole.EDITOR) return isAllowedModId(session?.user.allowedMods, modId);
+      return false;
+    },
+    [role, session]
+  );
+
+  const canEditCurrentMod = !!currentModId && canEditMod(currentModId);
+
+  const loadMods = useCallback(async (opts?: { force?: boolean }) => {
     setLoadError('');
+    const force = !!opts?.force;
+    const applyMods = (mods: ModDefinition[]) => {
+      setAvailableMods(mods);
+      if (mods.length === 0) return;
+
+      const stillExists = currentModId ? mods.some((m) => m.id === currentModId) : false;
+      const nextModId = stillExists ? currentModId : mods[0].id;
+      if (nextModId !== currentModId) setCurrentModId(nextModId);
+      if (typeof window !== 'undefined') localStorage.setItem(SELECTED_MOD_STORAGE_KEY, nextModId);
+    };
+
+    if (!force) {
+      const cached = readCache<ModDefinition[]>(MODS_CACHE_KEY);
+      if (cached && isFresh(cached.fetchedAt) && Array.isArray(cached.data)) {
+        applyMods(cached.data);
+        return;
+      }
+    }
+
     const res = await modService.list();
     if (res.success && res.data) {
-      let mods = res.data;
-      if (role === UserRole.EDITOR) {
-        mods = mods.filter((m) => session?.user.allowedMods?.includes(m.id));
-      }
-      setAvailableMods(mods);
-      if (mods.length > 0) {
-        const stillExists = currentModId ? mods.some((m) => m.id === currentModId) : false;
-        const nextModId = stillExists ? currentModId : mods[0].id;
-        if (nextModId !== currentModId) {
-          setCurrentModId(nextModId);
-        }
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(SELECTED_MOD_STORAGE_KEY, nextModId);
-        }
-      }
+      applyMods(res.data);
+      writeCache(MODS_CACHE_KEY, res.data);
     } else {
       setLoadError(res.error || '加载 Mod 列表失败');
     }
-  }, [role, session, currentModId]);
+  }, [readCache, writeCache, isFresh, currentModId]);
 
   useEffect(() => {
-    loadMods();
+    const forceOnce = forceReloadModsOnceRef.current;
+    void loadMods({ force: forceOnce });
+    if (forceOnce) forceReloadModsOnceRef.current = false;
   }, [loadMods]);
 
-  const refreshAnnouncements = useCallback(async () => {
+  const refreshAnnouncements = useCallback(async (opts?: { force?: boolean }) => {
     if (!currentModId) return;
+
+    const force = !!opts?.force;
+    const cacheKey = announcementsCacheKey(currentModId);
+    if (!force) {
+      const cached = readCache<Announcement[]>(cacheKey);
+      if (cached && isFresh(cached.fetchedAt) && Array.isArray(cached.data)) {
+        setLoadError('');
+        setAnnouncements(sortAnnouncementsByVersion(cached.data));
+        return;
+      }
+    }
+
     setLoading(true);
     const result = await announcementService.list(currentModId);
     if (result.success && result.data) {
+      setLoadError('');
       setAnnouncements(sortAnnouncementsByVersion(result.data));
+      writeCache(cacheKey, result.data);
     } else if (!result.success && result.error) {
       setLoadError(result.error);
     }
     setLoading(false);
-  }, [currentModId]);
+  }, [currentModId, readCache, writeCache, isFresh]);
 
   useEffect(() => {
-    refreshAnnouncements();
-  }, [refreshAnnouncements]);
+    const shouldForce = forceReloadAnnouncementsOnceRef.current && !!currentModId;
+    void refreshAnnouncements({ force: shouldForce });
+    if (shouldForce) forceReloadAnnouncementsOnceRef.current = false;
+  }, [refreshAnnouncements, currentModId]);
 
   const handleCreate = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (role === UserRole.GUEST || !newTitle.trim() || !newContent.trim()) return;
+      if (role === UserRole.GUEST || !canEditMod(currentModId) || !newTitle.trim() || !newContent.trim()) return;
 
       setIsSubmitting(true);
       const result = await announcementService.create(token, {
@@ -145,31 +236,39 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
         setNewVersion('');
         setNewTitle('');
         setNewContent('');
-        refreshAnnouncements();
+        void refreshAnnouncements({ force: true });
       } else {
         alert(result.error);
       }
       setIsSubmitting(false);
     },
-    [role, newVersion, newTitle, newContent, token, currentModId, session, refreshAnnouncements]
+    [role, canEditMod, newVersion, newTitle, newContent, token, currentModId, session, refreshAnnouncements]
   );
 
   const openEditModal = useCallback(
     (announcement: Announcement) => {
-      if (role === UserRole.GUEST) return;
+      if (role === UserRole.GUEST || !canEditMod(announcement.modId)) return;
       setEditTarget(announcement);
       setEditVersion(announcement.version ?? '');
       setEditTitle(announcement.title);
       setEditContent(announcement.content_html);
       setIsEditModalOpen(true);
     },
-    [role]
+    [role, canEditMod]
   );
 
   const handleEdit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (role === UserRole.GUEST || !session || !editTarget || !editTitle.trim() || !editContent.trim()) return;
+      if (
+        role === UserRole.GUEST ||
+        !session ||
+        !editTarget ||
+        !canEditMod(editTarget.modId) ||
+        !editTitle.trim() ||
+        !editContent.trim()
+      )
+        return;
 
       setIsEditSubmitting(true);
       const result = await announcementService.update(session.token, {
@@ -183,9 +282,12 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
 
       if (result.success && result.data) {
         const updatedAnnouncement = result.data;
-        setAnnouncements((prev) =>
-          sortAnnouncementsByVersion(prev.map((a) => (a.id === editTarget.id ? updatedAnnouncement : a)))
-        );
+        const cacheKey = announcementsCacheKey(editTarget.modId);
+        setAnnouncements((prev) => {
+          const next = sortAnnouncementsByVersion(prev.map((a) => (a.id === editTarget.id ? updatedAnnouncement : a)));
+          writeCache(cacheKey, next);
+          return next;
+        });
         setIsEditModalOpen(false);
         setEditTarget(null);
       } else {
@@ -193,29 +295,43 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
       }
       setIsEditSubmitting(false);
     },
-    [role, session, editTarget, editVersion, editTitle, editContent]
+    [role, session, editTarget, canEditMod, editVersion, editTitle, editContent, writeCache]
   );
 
   const handleDelete = useCallback(
     async (id: string) => {
       const result = await announcementService.delete(token, currentModId, id);
       if (result.success) {
-        setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+        const cacheKey = announcementsCacheKey(currentModId);
+        setAnnouncements((prev) => {
+          const next = prev.filter((a) => a.id !== id);
+          writeCache(cacheKey, next);
+          return next;
+        });
       } else {
         alert(result.error);
       }
     },
-    [token, currentModId]
+    [token, currentModId, writeCache]
   );
 
   return {
     token,
     role,
+    canEditCurrentMod,
     announcements,
     availableMods,
     currentModId,
     selectMod: (modId: string) => {
+      if (modId === currentModId) return;
       setCurrentModId(modId);
+      setLoadError('');
+      const cached = readCache<Announcement[]>(announcementsCacheKey(modId));
+      if (cached && isFresh(cached.fetchedAt) && Array.isArray(cached.data)) {
+        setAnnouncements(sortAnnouncementsByVersion(cached.data));
+      } else {
+        setAnnouncements([]);
+      }
       if (typeof window !== 'undefined') {
         localStorage.setItem(SELECTED_MOD_STORAGE_KEY, modId);
       }
@@ -224,7 +340,13 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
     loadError,
     refreshAnnouncements,
     isCreateModalOpen,
-    openCreateModal: () => setIsCreateModalOpen(true),
+    openCreateModal: () => {
+      if (!canEditMod(currentModId)) {
+        alert('当前 Mod 仅可查看，暂无编辑/发布权限。');
+        return;
+      }
+      setIsCreateModalOpen(true);
+    },
     closeCreateModal: () => setIsCreateModalOpen(false),
     newVersion,
     newTitle,

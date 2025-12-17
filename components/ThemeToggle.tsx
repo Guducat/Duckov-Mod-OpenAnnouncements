@@ -1,5 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Monitor } from 'lucide-react';
+import React, { useState } from 'react';
+import { IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import SettingsBrightnessIcon from '@mui/icons-material/SettingsBrightness';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -9,62 +12,91 @@ interface ThemeToggleProps {
 }
 
 export const ThemeToggle: React.FC<ThemeToggleProps> = ({ themeMode, setThemeMode }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const open = Boolean(anchorEl);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleSelect = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    handleClose();
+  };
 
   const options: { value: ThemeMode; label: string; icon: React.ReactNode }[] = [
-    { value: 'light', label: '浅色', icon: <Sun size={16} /> },
-    { value: 'dark', label: '深色', icon: <Moon size={16} /> },
-    { value: 'system', label: '跟随系统', icon: <Monitor size={16} /> },
+    { value: 'light', label: '浅色', icon: <LightModeIcon fontSize="small" /> },
+    { value: 'dark', label: '深色', icon: <DarkModeIcon fontSize="small" /> },
+    { value: 'system', label: '跟随系统', icon: <SettingsBrightnessIcon fontSize="small" /> },
   ];
 
-  const currentIcon = themeMode === 'light' ? <Sun size={20} />
-    : themeMode === 'dark' ? <Moon size={20} />
-    : <Monitor size={20} />;
+  const currentIcon = themeMode === 'light' ? <LightModeIcon />
+    : themeMode === 'dark' ? <DarkModeIcon />
+    : <SettingsBrightnessIcon />;
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-2 rounded-lg transition-colors duration-200
-          bg-slate-200 text-slate-700 hover:bg-slate-300
-          dark:bg-slate-700 dark:text-yellow-400 dark:hover:bg-slate-600"
+    <>
+      <IconButton
+        onClick={handleClick}
+        size="small"
+        sx={{
+          bgcolor: 'action.hover',
+          '&:hover': {
+            bgcolor: 'action.selected',
+          },
+        }}
         title="切换主题"
       >
         {currentIcon}
-      </button>
+      </IconButton>
 
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-36 bg-white dark:bg-brand-card border border-slate-200 dark:border-brand-blue/30 rounded-lg shadow-lg overflow-hidden z-50">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => {
-                setThemeMode(option.value);
-                setIsOpen(false);
-              }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors
-                ${themeMode === option.value
-                  ? 'bg-brand-blue/10 text-brand-blue dark:bg-brand-yellow/10 dark:text-brand-yellow'
-                  : 'text-slate-700 dark:text-brand-white hover:bg-slate-100 dark:hover:bg-brand-blue/10'
-                }`}
-            >
+      <Menu
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        slotProps={{
+          paper: {
+            sx: { minWidth: 140, mt: 1 },
+          },
+        }}
+      >
+        {options.map((option) => (
+          <MenuItem
+            key={option.value}
+            onClick={() => handleSelect(option.value)}
+            selected={themeMode === option.value}
+            sx={{
+              '&.Mui-selected': {
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                '&:hover': {
+                  bgcolor: 'primary.dark',
+                },
+                '& .MuiListItemIcon-root': {
+                  color: 'inherit',
+                },
+              },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: 32 }}>
               {option.icon}
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+            </ListItemIcon>
+            <ListItemText primary={option.label} />
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
   );
 };

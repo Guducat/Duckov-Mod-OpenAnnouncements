@@ -1,73 +1,87 @@
 import React, { useState } from 'react';
-import { Server, User as UserIcon } from 'lucide-react';
+import { Box, Tabs, Tab } from '@mui/material';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import StorageIcon from '@mui/icons-material/Storage';
+import PersonIcon from '@mui/icons-material/Person';
 import { ModManager } from './ModManager';
 import { UserManager } from './UserManager';
+import { ApiKeyManager } from './ApiKeyManager';
+import { UserRole } from '@/types';
 
 interface AdminToolsProps {
   token: string;
   currentUsername: string;
   isRootAdmin: boolean;
+  role: UserRole;
+  allowedModIds: string[];
 }
 
-export const AdminTools: React.FC<AdminToolsProps> = ({ token, currentUsername, isRootAdmin }) => {
-  const [activeTab, setActiveTab] = useState<'mods' | 'users'>('mods');
+type TabValue = 'mods' | 'users' | 'apikeys';
+
+export const AdminTools: React.FC<AdminToolsProps> = ({ token, currentUsername, isRootAdmin, role, allowedModIds }) => {
+  const [activeTab, setActiveTab] = useState<TabValue>(() => (role === UserRole.SUPER ? 'mods' : 'apikeys'));
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: TabValue) => {
+    setActiveTab(newValue);
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex space-x-4 border-b border-slate-200 dark:border-brand-blue/20 pb-1">
-        <button
-          onClick={() => setActiveTab('mods')}
-          className={`px-4 py-2 font-medium flex items-center gap-2 transition-colors ${
-            activeTab === 'mods'
-              ? 'text-brand-blue dark:text-brand-yellow border-b-2 border-brand-blue dark:border-brand-yellow'
-              : 'text-slate-500 dark:text-brand-muted hover:text-slate-700 dark:hover:text-white'
-          }`}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabChange}
+          textColor="primary"
+          indicatorColor="primary"
+          sx={{
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 500,
+              minHeight: 48,
+              gap: 1,
+            },
+          }}
         >
-          <Server size={18} /> Mod 管理
-        </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`px-4 py-2 font-medium flex items-center gap-2 transition-colors ${
-            activeTab === 'users'
-              ? 'text-brand-blue dark:text-brand-yellow border-b-2 border-brand-blue dark:border-brand-yellow'
-              : 'text-slate-500 dark:text-brand-muted hover:text-slate-700 dark:hover:text-white'
-          }`}
-        >
-          <UserIcon size={18} /> 成员管理
-        </button>
-      </div>
+          {role === UserRole.SUPER && (
+            <Tab
+              value="mods"
+              icon={<StorageIcon fontSize="small" />}
+              iconPosition="start"
+              label="Mod 管理"
+            />
+          )}
+          {role === UserRole.SUPER && (
+            <Tab
+              value="users"
+              icon={<PersonIcon fontSize="small" />}
+              iconPosition="start"
+              label="成员管理"
+            />
+          )}
+          <Tab
+            value="apikeys"
+            icon={<VpnKeyIcon fontSize="small" />}
+            iconPosition="start"
+            label="API Key"
+          />
+        </Tabs>
+      </Box>
 
-      <div className="min-h-[300px]">
-        {activeTab === 'mods' ? (
-          <ModManager token={token} />
-        ) : (
+      <Box sx={{ minHeight: 300 }}>
+        {role === UserRole.SUPER && activeTab === 'mods' && <ModManager token={token} />}
+        {role === UserRole.SUPER && activeTab === 'users' && (
           <UserManager token={token} currentUsername={currentUsername} isRootAdmin={isRootAdmin} />
         )}
-      </div>
-
-      <style>{`
-        .input-std {
-          width: 100%;
-          background-color: transparent;
-          border: 1px solid;
-          border-color: #cbd5e1;
-          border-radius: 0.25rem;
-          padding: 0.5rem;
-          font-size: 0.875rem;
-          outline: none;
-        }
-        .dark .input-std {
-          border-color: #334155;
-          color: white;
-        }
-        .badge {
-          font-size: 0.75rem;
-          padding: 0.125rem 0.5rem;
-          border-radius: 9999px;
-          border-width: 1px;
-        }
-      `}</style>
-    </div>
+        {activeTab === 'apikeys' && (
+          <ApiKeyManager
+            token={token}
+            currentUsername={currentUsername}
+            isRootAdmin={isRootAdmin}
+            role={role}
+            allowedModIds={allowedModIds}
+          />
+        )}
+      </Box>
+    </Box>
   );
 };
-

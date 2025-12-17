@@ -1,4 +1,3 @@
-
 export enum UserRole {
   SUPER = 'super',
   EDITOR = 'editor',
@@ -38,16 +37,6 @@ export interface ResetPasswordRequest {
   newPassword: string;
 }
 
-export interface ChangePasswordRequest {
-  oldPassword: string;
-  newPassword: string;
-}
-
-export interface SetUserStatusRequest {
-  username: string;
-  status: UserStatus;
-}
-
 export interface UpdateUserRequest {
   username: string;
   role?: UserRole;
@@ -80,4 +69,22 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+export type ApiKeyStatus = 'active' | 'revoked';
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  allowedMods: string[];
+  createdAt: number;
+  createdBy: string;
+  status: ApiKeyStatus;
+  revokedAt?: number;
+  revokedBy?: string;
+  lastUsedAt?: number;
+}
+
+export interface CreateApiKeyResponse extends ApiKey {
+  token: string; // 仅创建时返回一次
 }
