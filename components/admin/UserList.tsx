@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { User, UserRole, UserStatus } from '../../types';
+import { User, UserRole, UserStatus } from '@/types';
 
 interface UserListProps {
   users: User[];
@@ -35,18 +35,11 @@ export const UserList: React.FC<UserListProps> = ({
   onToggleStatus,
   onDelete,
 }) => {
-  const canManageUser = (u: User): boolean => {
-    if (u.username === currentUsername) return false;
-    if (u.isRootAdmin) return false;
-    if (u.role === UserRole.SUPER && !isRootAdmin) return false;
-    return true;
-  };
+  const canManageUser = (u: User): boolean =>
+    u.username !== currentUsername && !u.isRootAdmin && !(u.role === UserRole.SUPER && !isRootAdmin);
 
-  const canDisableOrDeleteUser = (u: User): boolean => {
-    if (!canManageUser(u)) return false;
-    if (u.role === UserRole.SUPER && u.status === UserStatus.ACTIVE && activeSuperCount <= 1) return false;
-    return true;
-  };
+  const canDisableOrDeleteUser = (u: User): boolean =>
+    canManageUser(u) && !(u.role === UserRole.SUPER && u.status === UserStatus.ACTIVE && activeSuperCount <= 1);
 
   return (
     <Stack spacing={2}>

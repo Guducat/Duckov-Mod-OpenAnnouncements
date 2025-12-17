@@ -1,9 +1,9 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import { announcementService, modService } from '../../services/apiService';
-import { useSessionInfo } from '../../hooks/useSessionInfo';
-import { Announcement, AuthSession, ModDefinition, UserRole } from '../../types';
-import { isAllowedModId } from '../../utils/modId';
-import { compareVersionTagDesc } from '../../utils/version';
+import { announcementService, modService } from '@/services/apiService';
+import { useSessionInfo } from '@/hooks/useSessionInfo';
+import { Announcement, AuthSession, ModDefinition, UserRole } from '@/types';
+import { isAllowedModId } from '@/utils/modId';
+import { compareVersionTagDesc } from '@/utils/version';
 
 type LocalCache<T> = {
   fetchedAt: number;
@@ -151,33 +151,28 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
   const loadMods = useCallback(async (opts?: { force?: boolean }) => {
     setLoadError('');
     const force = !!opts?.force;
+    const applyMods = (mods: ModDefinition[]) => {
+      setAvailableMods(mods);
+      if (mods.length === 0) return;
+
+      const stillExists = currentModId ? mods.some((m) => m.id === currentModId) : false;
+      const nextModId = stillExists ? currentModId : mods[0].id;
+      if (nextModId !== currentModId) setCurrentModId(nextModId);
+      if (typeof window !== 'undefined') localStorage.setItem(SELECTED_MOD_STORAGE_KEY, nextModId);
+    };
 
     if (!force) {
       const cached = readCache<ModDefinition[]>(MODS_CACHE_KEY);
       if (cached && isFresh(cached.fetchedAt) && Array.isArray(cached.data)) {
-        const mods = cached.data;
-        setAvailableMods(mods);
-        if (mods.length > 0) {
-          const stillExists = currentModId ? mods.some((m) => m.id === currentModId) : false;
-          const nextModId = stillExists ? currentModId : mods[0].id;
-          if (nextModId !== currentModId) setCurrentModId(nextModId);
-          if (typeof window !== 'undefined') localStorage.setItem(SELECTED_MOD_STORAGE_KEY, nextModId);
-        }
+        applyMods(cached.data);
         return;
       }
     }
 
     const res = await modService.list();
     if (res.success && res.data) {
-      const mods = res.data;
-      setAvailableMods(mods);
-      writeCache(MODS_CACHE_KEY, mods);
-      if (mods.length > 0) {
-        const stillExists = currentModId ? mods.some((m) => m.id === currentModId) : false;
-        const nextModId = stillExists ? currentModId : mods[0].id;
-        if (nextModId !== currentModId) setCurrentModId(nextModId);
-        if (typeof window !== 'undefined') localStorage.setItem(SELECTED_MOD_STORAGE_KEY, nextModId);
-      }
+      applyMods(res.data);
+      writeCache(MODS_CACHE_KEY, res.data);
     } else {
       setLoadError(res.error || '加载 Mod 列表失败');
     }
@@ -185,7 +180,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
 
   useEffect(() => {
     const forceOnce = forceReloadModsOnceRef.current;
-    loadMods({ force: forceOnce });
+    void loadMods({ force: forceOnce });
     if (forceOnce) forceReloadModsOnceRef.current = false;
   }, [loadMods]);
 
@@ -217,7 +212,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
 
   useEffect(() => {
     const shouldForce = forceReloadAnnouncementsOnceRef.current && !!currentModId;
-    refreshAnnouncements({ force: shouldForce });
+    void refreshAnnouncements({ force: shouldForce });
     if (shouldForce) forceReloadAnnouncementsOnceRef.current = false;
   }, [refreshAnnouncements, currentModId]);
 
@@ -241,7 +236,7 @@ export const useDashboardController = (session: AuthSession | null): UseDashboar
         setNewVersion('');
         setNewTitle('');
         setNewContent('');
-        refreshAnnouncements({ force: true });
+        void refreshAnnouncements({ force: true });
       } else {
         alert(result.error);
       }

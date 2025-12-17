@@ -111,17 +111,24 @@ const getComponentOverrides = (mode: PaletteMode): ThemeOptions['components'] =>
         fontWeight: 700,
         padding: '8px 16px',
       },
-      containedPrimary: {
-        boxShadow: mode === 'light'
-          ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)'
-          : '0 4px 6px -1px rgba(251, 191, 36, 0.2)',
-        '&:hover': {
-          boxShadow: mode === 'light'
-            ? '0 4px 6px -1px rgba(59, 130, 246, 0.2)'
-            : '0 4px 6px -1px rgba(251, 191, 36, 0.3)',
+    },
+    variants: [
+      {
+        props: { variant: 'contained', color: 'primary' },
+        style: {
+          boxShadow:
+            mode === 'light'
+              ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)'
+              : '0 4px 6px -1px rgba(251, 191, 36, 0.2)',
+          '&:hover': {
+            boxShadow:
+              mode === 'light'
+                ? '0 4px 6px -1px rgba(59, 130, 246, 0.2)'
+                : '0 4px 6px -1px rgba(251, 191, 36, 0.3)',
+          },
         },
       },
-    },
+    ],
     defaultProps: {
       disableElevation: true,
     },
@@ -348,17 +355,3 @@ export const createAppTheme = (mode: PaletteMode) => {
     components: getComponentOverrides(mode),
   });
 };
-
-// 扩展 MUI 类型以支持自定义品牌色
-declare module '@mui/material/styles' {
-  interface Palette {
-    brand: typeof brandColors;
-  }
-  interface PaletteOptions {
-    brand?: typeof brandColors;
-  }
-}
-
-// 导出默认主题（dark 模式）
-export const darkTheme = createAppTheme('dark');
-export const lightTheme = createAppTheme('light');

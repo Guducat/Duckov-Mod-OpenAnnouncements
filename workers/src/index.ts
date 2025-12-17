@@ -153,7 +153,7 @@ const getRootAdminUsername = async (env: Env): Promise<string | null> => {
   if (u) return u;
 
   // Migration helper: if already initialized but root admin not recorded,
-  // and there is only one SUPER user, treat it as root admin.
+  // and there is only one superuser, treat it as root admin.
   if (await isInitialized(env)) {
     const all = await listUsers(env);
     const supers = all.filter((x) => x.role === UserRole.SUPER);
@@ -183,9 +183,9 @@ const putUser = async (env: Env, user: StoredUser): Promise<void> => {
 
 const listUsers = async (env: Env): Promise<StoredUser[]> => {
   const users: StoredUser[] = [];
-  let cursor: string | undefined;
+  let cursor: string | undefined = undefined;
   do {
-    const page = await env.ANNOUNCEMENTS_KV.list({ prefix: 'user:', cursor });
+    const page: KVNamespaceListResult<unknown> = await env.ANNOUNCEMENTS_KV.list({ prefix: 'user:', cursor });
     for (const k of page.keys) {
       const u = await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' });
       if (u) users.push(u as StoredUser);
@@ -211,6 +211,20 @@ const isRootAdminSession = async (session: AuthSession, env: Env): Promise<boole
   if (session.user.isRootAdmin) return true;
   const root = await getRootAdminUsername(env);
   return !!root && root === session.user.username;
+};
+
+type ApiKeyManagerAuth = { session: AuthSession; isRootAdmin: boolean };
+
+const requireApiKeyManagerAuth = async (req: Request, env: Env): Promise<ApiKeyManagerAuth | Response> => {
+  const initError = await requireInitialized(env);
+  if (initError) return initError;
+
+  const session = await getSession(req, env);
+  if (!session) return unauthorized('登录已过期');
+  if (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR) return forbidden('权限不足');
+
+  const isRootAdmin = session.user.role === UserRole.SUPER ? await isRootAdminSession(session, env) : false;
+  return { session, isRootAdmin };
 };
 
 const canAccessMod = (user: User, modId: string): boolean => {
@@ -261,8 +275,14 @@ const toSafeApiKey = (record: ApiKeyRecord) => {
 
 const normalizeAllowedMods = (mods: unknown): string[] => {
   if (!Array.isArray(mods)) return [];
-  const uniq = Array.from(new Set(mods.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean)));
-  return uniq;
+  return Array.from(
+    new Set(
+      mods
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    )
+  );
 };
 
 const getApiKeyByToken = async (rawToken: string, env: Env): Promise<ApiKeyRecord | null> => {
@@ -464,18 +484,14 @@ export default {
 
     // --- API Key 管理（super/editor；editor 仅能管理自己创建的 key） ---
     if (path === '/api/apikey/list' && req.method === 'GET') {
-      const initError = await requireInitialized(env);
-      if (initError) return initError;
-
-      const session = await getSession(req, env);
-      if (!session) return unauthorized('登录已过期');
-      if (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR) return forbidden('权限不足');
-      const isRootAdmin = session.user.role === UserRole.SUPER ? await isRootAdminSession(session, env) : false;
+      const auth = await requireApiKeyManagerAuth(req, env);
+      if (auth instanceof Response) return auth;
+      const { session, isRootAdmin } = auth;
 
       const keys: ApiKeyRecord[] = [];
       let cursor: string | undefined;
       do {
-        const page = await env.ANNOUNCEMENTS_KV.list({ prefix: KV_KEYS.API_KEY_PREFIX, cursor });
+        const page: KVNamespaceListResult<unknown> = await env.ANNOUNCEMENTS_KV.list({ prefix: KV_KEYS.API_KEY_PREFIX, cursor });
         for (const k of page.keys) {
           const record = (await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' })) as ApiKeyRecord | null;
           if (record) keys.push(record);
@@ -542,13 +558,9 @@ export default {
     }
 
     if (path === '/api/apikey/revoke' && req.method === 'POST') {
-      const initError = await requireInitialized(env);
-      if (initError) return initError;
-
-      const session = await getSession(req, env);
-      if (!session) return unauthorized('登录已过期');
-      if (session.user.role !== UserRole.SUPER && session.user.role !== UserRole.EDITOR) return forbidden('权限不足');
-      const isRootAdmin = session.user.role === UserRole.SUPER ? await isRootAdminSession(session, env) : false;
+      const auth = await requireApiKeyManagerAuth(req, env);
+      if (auth instanceof Response) return auth;
+      const { session, isRootAdmin } = auth;
 
       const body = await readJson<{ id?: string }>(req);
       const id = typeof body?.id === 'string' ? body.id.trim() : '';
@@ -866,8 +878,7 @@ export default {
       target.role = nextRole;
 
       if (Array.isArray(body.allowedMods)) {
-        const uniq = Array.from(new Set(body.allowedMods.filter((x) => typeof x === 'string')));
-        target.allowedMods = uniq;
+        target.allowedMods = normalizeAllowedMods(body.allowedMods);
       }
 
       if (target.role === UserRole.SUPER) {
@@ -927,7 +938,7 @@ export default {
       const announcements: Announcement[] = [];
       let cursor: string | undefined;
       do {
-        const page = await env.ANNOUNCEMENTS_KV.list({ prefix, cursor });
+        const page: KVNamespaceListResult<unknown> = await env.ANNOUNCEMENTS_KV.list({ prefix, cursor });
         for (const k of page.keys) {
           const a = await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' });
           if (a) announcements.push(a as Announcement);

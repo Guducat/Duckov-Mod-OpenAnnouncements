@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ThemeProvider, CssBaseline, Box, TextField, Button, Alert, Typography, Stack } from '@mui/material';
 import { AuthSession, UserStatus } from './types';
-import { authService, systemService, SystemStatus } from './services/apiService';
+import { authService, systemService } from './services/apiService';
 import { Dashboard } from './pages/Dashboard';
 import { AdminPage } from './pages/Admin';
 import { Modal } from './components/Modal';
@@ -34,7 +34,6 @@ const App: React.FC = () => {
   const { route, navigate } = useHashRoute();
 
   // 系统初始化状态
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [isInitModalOpen, setIsInitModalOpen] = useState(false);
   const [initToken, setInitToken] = useState('');
   const [initUsername, setInitUsername] = useState('admin');
@@ -122,15 +121,16 @@ const App: React.FC = () => {
   // 检查系统初始化状态
   useEffect(() => {
     const checkSystem = async () => {
-      const res = await systemService.getStatus();
-      if (res.success && res.data) {
-        setSystemStatus(res.data);
-        if (!res.data.initialized) {
+      try {
+        const res = await systemService.getStatus();
+        if (res.success && res.data && !res.data.initialized) {
           setIsInitModalOpen(true);
         }
+      } catch {
+        // ignore
       }
     };
-    checkSystem();
+    void checkSystem();
   }, []);
 
   // 处理系统初始化
@@ -142,7 +142,6 @@ const App: React.FC = () => {
     try {
       const res = await systemService.init(initToken, initUsername, initPassword, initDisplayName || undefined);
       if (res.success) {
-        setSystemStatus({ initialized: true, rootAdminUsername: initUsername });
         setIsInitModalOpen(false);
         // 初始化成功后自动打开登录框
         setUsername(initUsername);

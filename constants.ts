@@ -1,5 +1,3 @@
-export const APP_NAME = "逃离鸭科夫Mod公告板";
-
 export const API_ENDPOINTS = {
   SYSTEM_INIT: '/api/system/init',
   LOGIN: '/api/auth/login',
@@ -31,5 +29,3 @@ export const MOCK_SEED_USER = {
   role: 'super',
   displayName: '系统管理员'
 };
-
-export const DEFAULT_MOD_ID = 'DuckovCustomSoundsMod';

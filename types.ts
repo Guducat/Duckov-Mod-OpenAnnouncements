@@ -1,4 +1,3 @@
-
 export enum UserRole {
   SUPER = 'super',
   EDITOR = 'editor',
@@ -36,16 +35,6 @@ export interface CreateUserRequest {
 export interface ResetPasswordRequest {
   username: string;
   newPassword: string;
-}
-
-export interface ChangePasswordRequest {
-  oldPassword: string;
-  newPassword: string;
-}
-
-export interface SetUserStatusRequest {
-  username: string;
-  status: UserStatus;
 }
 
 export interface UpdateUserRequest {

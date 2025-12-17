@@ -5,8 +5,8 @@ import ViewListIcon from '@mui/icons-material/ViewList';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import { AuthSession, UserRole } from '../../types';
-import { AppRoute } from '../../hooks/useHashRoute';
+import { AuthSession, UserRole } from '@/types';
+import { AppRoute } from '@/hooks/useHashRoute';
 import { ThemeMode, ThemeToggle } from '../ThemeToggle';
 
 interface AppHeaderProps {

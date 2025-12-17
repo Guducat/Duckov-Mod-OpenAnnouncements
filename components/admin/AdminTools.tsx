@@ -6,7 +6,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import { ModManager } from './ModManager';
 import { UserManager } from './UserManager';
 import { ApiKeyManager } from './ApiKeyManager';
-import { UserRole } from '../../types';
+import { UserRole } from '@/types';
 
 interface AdminToolsProps {
   token: string;

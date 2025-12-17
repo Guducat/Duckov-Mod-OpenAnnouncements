@@ -17,9 +17,9 @@ import {
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { ApiKey, CreateApiKeyResponse, ModDefinition, UserRole } from '../../types';
-import { apiKeyService, modService } from '../../services/apiService';
-import { isAllowedModId } from '../../utils/modId';
+import { ApiKey, CreateApiKeyResponse, ModDefinition, UserRole } from '@/types';
+import { apiKeyService, modService } from '@/services/apiService';
+import { isAllowedModId } from '@/utils/modId';
 import { Modal } from '../Modal';
 import { ThreeStepConfirmDialog } from '../ThreeStepConfirmDialog';
 import { AppSnackbar } from '../AppSnackbar';
@@ -94,24 +94,29 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({
   const reload = useCallback(async () => {
     setLoadError('');
     setLoading(true);
-    const [mRes, kRes] = await Promise.all([modService.list(), apiKeyService.list(token)]);
-    if (mRes.success && mRes.data) {
-      let nextMods = mRes.data;
-      if (role === UserRole.EDITOR) {
-        nextMods = nextMods.filter((m) => isAllowedModId(allowedModIds || [], m.id));
+    try {
+      const [mRes, kRes] = await Promise.all([modService.list(), apiKeyService.list(token)]);
+      if (mRes.success && mRes.data) {
+        let nextMods = mRes.data;
+        if (role === UserRole.EDITOR) {
+          nextMods = nextMods.filter((m) => isAllowedModId(allowedModIds || [], m.id));
+        }
+        setMods(nextMods);
+        if (nextMods.length > 0) {
+          setNewAllowedMods((prev) => (prev.size ? prev : new Set([nextMods[0].id])));
+        }
       }
-      setMods(nextMods);
-      if (nextMods.length > 0) {
-        setNewAllowedMods((prev) => (prev.size ? prev : new Set([nextMods[0].id])));
-      }
+      if (kRes.success && kRes.data) setKeys(kRes.data);
+      if (!kRes.success) setLoadError(kRes.error || '加载 API key 失败');
+    } catch {
+      setLoadError('加载 API key 失败');
+    } finally {
+      setLoading(false);
     }
-    if (kRes.success && kRes.data) setKeys(kRes.data);
-    if (!kRes.success) setLoadError(kRes.error || '加载 API key 失败');
-    setLoading(false);
   }, [token, role, allowedModIds]);
 
   useEffect(() => {
-    reload();
+    void reload();
   }, [reload]);
 
   const visibleKeys = useMemo(() => {

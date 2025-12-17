@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
-import { Announcement, ModDefinition, UserRole } from '../../types';
+import { Announcement, ModDefinition, UserRole } from '@/types';
 import { AnnouncementCard } from '../AnnouncementCard';
 
 interface AnnouncementsPanelProps {
@@ -50,7 +50,7 @@ export const AnnouncementsPanel: React.FC<AnnouncementsPanelProps> = ({
 
   const renderEmptyState = () => {
     if (!hasMods) {
-      return '您当前没有访问任何 Mod 公告板的权限。';
+      return '您当前没有访问任何 Mod 公告的权限。';
     }
     return (
       <span>

@@ -18,7 +18,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import CodeIcon from '@mui/icons-material/Code';
 import CloseIcon from '@mui/icons-material/Close';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import { Announcement, UserRole } from '../types';
+import { Announcement, UserRole } from '@/types';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface AnnouncementCardProps {
@@ -43,7 +43,7 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
   const [isOverflowing, setIsOverflowing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Check if content is overflowing (needs expand button)
+  // 检查内容是否溢出（需要“展开”按钮）
   useEffect(() => {
     const checkOverflow = () => {
       if (contentRef.current && !expanded) {

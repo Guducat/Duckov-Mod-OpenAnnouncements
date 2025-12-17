@@ -1,11 +1,6 @@
 import React from 'react';
 import { Snackbar, Alert, AlertColor } from '@mui/material';
 
-export interface SnackbarMessage {
-  message: string;
-  severity: AlertColor;
-}
-
 interface AppSnackbarProps {
   open: boolean;
   message: string;

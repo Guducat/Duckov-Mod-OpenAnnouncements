@@ -21,8 +21,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SaveIcon from '@mui/icons-material/Save';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import { ModDefinition } from '../../types';
-import { modService } from '../../services/apiService';
+import { ModDefinition } from '@/types';
+import { modService } from '@/services/apiService';
 import { AppSnackbar } from '../AppSnackbar';
 
 interface ModManagerProps {
@@ -68,17 +68,21 @@ export const ModManager: React.FC<ModManagerProps> = ({ token }) => {
     setSnackbar({ open: true, message, severity });
   };
 
-  const loadMods = async () => {
-    const res = await modService.list();
-    if (res.success && res.data) {
-      setMods(res.data);
-      setOriginalOrder(res.data.map((m) => m.id));
+  const loadMods = useCallback(async () => {
+    try {
+      const res = await modService.list();
+      if (res.success && res.data) {
+        setMods(res.data);
+        setOriginalOrder(res.data.map((m) => m.id));
+      }
+    } catch {
+      // ignore
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadMods();
-  }, []);
+    void loadMods();
+  }, [loadMods]);
 
   // Cooldown timer effect
   useEffect(() => {
@@ -110,8 +114,8 @@ export const ModManager: React.FC<ModManagerProps> = ({ token }) => {
     if (res.success) {
       setNewId('');
       setNewName('');
-      loadMods();
       showMessage('Mod 创建成功', 'success');
+      await loadMods();
     } else {
       showMessage(res.error || '创建失败', 'error');
     }
@@ -138,7 +142,7 @@ export const ModManager: React.FC<ModManagerProps> = ({ token }) => {
       const res = await modService.delete(token, deleteDialog.modId);
       setDeleteDialog({ open: false, modId: '', modName: '', step: 'idle', cooldownRemaining: 0 });
       if (res.success) {
-        loadMods();
+        await loadMods();
         showMessage('Mod 已删除，相关用户权限已清理', 'success');
       } else {
         showMessage(res.error || '删除失败', 'error');

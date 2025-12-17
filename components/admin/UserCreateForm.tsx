@@ -12,7 +12,7 @@ import {
   Stack,
   Alert,
 } from '@mui/material';
-import { ModDefinition, UserRole } from '../../types';
+import { ModDefinition, UserRole } from '@/types';
 
 interface CreateUserPayload {
   username: string;

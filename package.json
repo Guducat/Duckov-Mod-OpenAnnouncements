@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "typecheck:worker": "tsc -p workers/tsconfig.json --noEmit",
+    "check": "npm run -s typecheck && npm run -s typecheck:worker && npm run -s build",
     "worker:dev": "node scripts/prepare-dev-vars.mjs && wrangler dev --port 8787",
     "worker:deploy": "wrangler deploy"
   },

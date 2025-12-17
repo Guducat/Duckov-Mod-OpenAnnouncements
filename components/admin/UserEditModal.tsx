@@ -11,7 +11,7 @@ import {
   Chip,
   Stack,
 } from '@mui/material';
-import { ModDefinition, UserRole } from '../../types';
+import { ModDefinition, UserRole } from '@/types';
 import { Modal } from '../Modal';
 
 interface UserEditModalProps {

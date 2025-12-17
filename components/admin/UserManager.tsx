@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, AlertColor } from '@mui/material';
-import { ModDefinition, User, UserRole, UserStatus } from '../../types';
-import { modService, userService } from '../../services/apiService';
+import { ModDefinition, User, UserRole, UserStatus } from '@/types';
+import { modService, userService } from '@/services/apiService';
 import { UserCreateForm } from './UserCreateForm';
 import { UserEditModal } from './UserEditModal';
 import { UserList } from './UserList';
@@ -90,7 +90,7 @@ export const UserManager: React.FC<UserManagerProps> = ({ token, currentUsername
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   const activeSuperCount = useMemo(
@@ -113,14 +113,14 @@ export const UserManager: React.FC<UserManagerProps> = ({ token, currentUsername
       allowedMods: payload.allowedModIds,
     });
     if (res.success) {
-      loadData();
       showMessage('用户创建成功', 'success');
+      void loadData();
     } else {
       showMessage(res.error || '创建失败', 'error');
     }
   };
 
-  const handleDelete = async (u: string) => {
+  const handleDelete = (u: string) => {
     if (u === currentUsername) {
       showMessage('不能删除自己', 'warning');
       return;
@@ -128,7 +128,7 @@ export const UserManager: React.FC<UserManagerProps> = ({ token, currentUsername
     setDeleteUserDialog({ open: true, username: u });
   };
 
-  const handleResetPassword = async (u: User) => {
+  const handleResetPassword = (u: User) => {
     if (u.username === currentUsername) {
       showMessage('不能在这里重置自己的密码，请使用另一个超级管理员账号操作。', 'warning');
       return;
@@ -159,8 +159,8 @@ export const UserManager: React.FC<UserManagerProps> = ({ token, currentUsername
       async () => {
         const res = await userService.setStatus(token, u.username, next);
         if (res.success) {
-          loadData();
           showMessage(`用户已${actionText}`, 'success');
+          void loadData();
         } else {
           showMessage(res.error || `${actionText}失败`, 'error');
         }
@@ -197,8 +197,8 @@ export const UserManager: React.FC<UserManagerProps> = ({ token, currentUsername
     if (res.success) {
       setIsEditOpen(false);
       setEditingUser(null);
-      loadData();
       showMessage('用户信息已更新', 'success');
+      void loadData();
     } else {
       showMessage(res.error || '更新失败', 'error');
     }
