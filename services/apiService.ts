@@ -24,6 +24,20 @@ export interface SystemStatus {
   rootAdminUsername: string | null;
 }
 
+export type IndexCount = { present: boolean; count: number };
+
+export interface SystemIndexStatus {
+  usersIndex: IndexCount;
+  apiKeyIdsIndex: IndexCount;
+  announcementIndex: Record<string, IndexCount>;
+}
+
+export interface SystemRebuildIndexResult {
+  users: number;
+  apiKeys: number;
+  announcements: Record<string, number>;
+}
+
 export const systemService = {
   getStatus: async (): Promise<ApiResponse<SystemStatus>> => {
     if (USE_MOCK_API) {
@@ -86,6 +100,69 @@ export const systemService = {
     } catch {
       return { success: false, error: '网络请求失败' };
     }
+  },
+
+  getIndexStatus: async (token: string): Promise<ApiResponse<SystemIndexStatus>> => {
+    if (USE_MOCK_API) {
+      const session = mockKv.get<AuthSession>(`session:${token}`);
+      if (!session || session.user.role !== UserRole.SUPER || !session.user.isRootAdmin) {
+        return { success: false, error: '权限不足：仅系统管理员可查看' };
+      }
+
+      const users = mockKv.get<User[]>('SYSTEM_USERS_LIST') || [];
+      const keys = mockKv.get<ApiKey[]>('SYSTEM_APIKEYS_LIST') || [];
+      const mods = mockKv.get<ModDefinition[]>('SYSTEM_MODS_LIST') || [];
+      const announcementIndex: Record<string, IndexCount> = {};
+      for (const mod of mods) {
+        const list = mockKv.get<Announcement[]>(`${mod.id}_updates`) || [];
+        announcementIndex[mod.id] = { present: true, count: list.length };
+      }
+
+      return {
+        success: true,
+        data: {
+          usersIndex: { present: true, count: users.length },
+          apiKeyIdsIndex: { present: true, count: keys.length },
+          announcementIndex
+        }
+      };
+    }
+
+    return requestJson<SystemIndexStatus>(API_ENDPOINTS.SYSTEM_INDEX_STATUS, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+  },
+
+  rebuildIndex: async (token: string, modId?: string): Promise<ApiResponse<SystemRebuildIndexResult>> => {
+    const normalizedModId = typeof modId === 'string' ? modId.trim() : '';
+
+    if (USE_MOCK_API) {
+      const session = mockKv.get<AuthSession>(`session:${token}`);
+      if (!session || session.user.role !== UserRole.SUPER || !session.user.isRootAdmin) {
+        return { success: false, error: '权限不足：仅系统管理员可执行' };
+      }
+
+      const users = mockKv.get<User[]>('SYSTEM_USERS_LIST') || [];
+      const keys = mockKv.get<ApiKey[]>('SYSTEM_APIKEYS_LIST') || [];
+      const mods = mockKv.get<ModDefinition[]>('SYSTEM_MODS_LIST') || [];
+      const targetMods = normalizedModId ? mods.filter((m) => m.id === normalizedModId) : mods;
+      const announcements: Record<string, number> = {};
+      for (const mod of targetMods) {
+        const list = mockKv.get<Announcement[]>(`${mod.id}_updates`) || [];
+        announcements[mod.id] = list.length;
+      }
+
+      return { success: true, data: { users: users.length, apiKeys: keys.length, announcements } };
+    }
+
+    return requestJson<SystemRebuildIndexResult>(API_ENDPOINTS.SYSTEM_REBUILD_INDEX, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(normalizedModId ? { modId: normalizedModId } : {})
+    });
   }
 };
 
@@ -298,18 +375,19 @@ export const authService = {
         if ((user.status ?? UserStatus.ACTIVE) !== UserStatus.ACTIVE) {
           return { success: false, error: '账号已停用' };
         }
-        const token = generateToken();
-        const session: AuthSession = {
-          token,
-          user: { 
-            username: user.username, 
-            role: user.role, 
-            displayName: user.displayName,
-            allowedMods: user.allowedMods,
-            status: user.status ?? UserStatus.ACTIVE
-          },
-          expiresAt: Date.now() + 86400000 // 24h
-        };
+      const token = generateToken();
+      const session: AuthSession = {
+        token,
+        user: { 
+          username: user.username, 
+          role: user.role, 
+          displayName: user.displayName,
+          allowedMods: user.allowedMods,
+          status: user.status ?? UserStatus.ACTIVE,
+          isRootAdmin: !!user.isRootAdmin
+        },
+        expiresAt: Date.now() + 86400000 // 24h
+      };
         mockKv.put(`session:${token}`, session);
         return { success: true, data: session };
       }

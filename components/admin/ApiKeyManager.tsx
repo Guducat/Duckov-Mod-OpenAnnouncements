@@ -335,7 +335,7 @@ export const ApiKeyManager: React.FC<ApiKeyManagerProps> = ({
                               创建者：<Box component="span" sx={{ fontWeight: 500, color: 'text.primary' }}>{k.createdBy}</Box>
                             </Typography>
                           )}
-                          <Typography variant="body2" color="text.secondary">
+                          <Typography variant="body2" color="text.secondary" component="div">
                             绑定 Mod：
                             {k.allowedMods.length > 0 ? (
                               k.allowedMods.map((modId) => (
