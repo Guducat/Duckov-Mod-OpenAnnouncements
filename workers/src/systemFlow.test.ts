@@ -105,6 +105,56 @@ describe('workers/system flow (functional)', () => {
     expect(ids).toContain('test_server');
   });
 
+  it('rebuild-index 初始化完成后仅允许 root-admin（不再接受 x-init-token 旁路）', async () => {
+    const { env } = setupUninitializedEnv();
+
+    await worker.fetch(
+      new Request('https://example.invalid/api/system/init', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-init-token': 'init_token' },
+        body: JSON.stringify({ username: 'admin', password: 'pw', displayName: 'Admin' })
+      }),
+      env
+    );
+
+    const initTokenOnlyRes = await worker.fetch(
+      new Request('https://example.invalid/api/system/rebuild-index', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-init-token': 'init_token' },
+        body: JSON.stringify({})
+      }),
+      env
+    );
+    expect(initTokenOnlyRes.status).toBe(401);
+
+    const loginRes = await worker.fetch(
+      new Request('https://example.invalid/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'pw' })
+      }),
+      env
+    );
+    expect(loginRes.status).toBe(200);
+    const loginBody = await json<{ success: boolean; data?: { token: string } }>(loginRes);
+    expect(loginBody.success).toBe(true);
+    const sessionToken = loginBody.data!.token;
+
+    const rebuildRes = await worker.fetch(
+      new Request('https://example.invalid/api/system/rebuild-index', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({})
+      }),
+      env
+    );
+    expect(rebuildRes.status).toBe(200);
+    const rebuildBody = await json<{ success: boolean; data?: { users: number; apiKeys: number } }>(rebuildRes);
+    expect(rebuildBody.success).toBe(true);
+    expect(typeof rebuildBody.data?.users).toBe('number');
+    expect(typeof rebuildBody.data?.apiKeys).toBe('number');
+  });
+
   it('API key 仅允许推送到授权 mod；public list 能读取推送结果', async () => {
     const { env } = setupUninitializedEnv();
 

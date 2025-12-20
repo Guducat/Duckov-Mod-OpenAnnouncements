@@ -629,15 +629,10 @@ export default {
 
     // --- KV 索引重建（维护接口） ---
     if (path === '/api/system/rebuild-index' && req.method === 'POST') {
-      const initError = await requireInitialized(env);
-      if (initError) return initError;
-
-      const initToken = (req.headers.get('x-init-token') || '').trim();
-      const hasValidInitToken = !!env.INIT_TOKEN && initToken === env.INIT_TOKEN;
-      if (!hasValidInitToken) {
-        const auth = await requireRootAdmin(req, env);
-        if (auth instanceof Response) return auth;
-      }
+      // 索引重建是高权限维护操作：初始化完成后仅允许 Root 管理员访问，
+      // 即使 INIT_TOKEN 泄漏也无法单独调用该接口。
+      const auth = await requireRootAdmin(req, env);
+      if (auth instanceof Response) return auth;
 
       const body = await readJson<{ modId?: string }>(req);
       const requestedModId = typeof body?.modId === 'string' ? body.modId.trim() : '';
