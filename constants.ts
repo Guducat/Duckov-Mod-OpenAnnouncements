@@ -1,5 +1,7 @@
 export const API_ENDPOINTS = {
   SYSTEM_INIT: '/api/system/init',
+  SYSTEM_REBUILD_INDEX: '/api/system/rebuild-index',
+  SYSTEM_INDEX_STATUS: '/api/system/index-status',
   LOGIN: '/api/auth/login',
   CHANGE_PASSWORD: '/api/auth/change-password',
   POST: '/api/admin/post',

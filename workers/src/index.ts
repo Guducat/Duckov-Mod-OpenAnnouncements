@@ -40,14 +40,17 @@ type Env = {
 
 const KV_KEYS = {
   MODS: 'SYSTEM_MODS_LIST',
+  USERS_INDEX: 'SYSTEM_USERS_INDEX',
   SESSION_PREFIX: 'session:',
   LEGACY_UPDATES_SUFFIX: '_updates',
   SYSTEM_INITIALIZED: 'SYSTEM_INITIALIZED',
   SYSTEM_ROOT_ADMIN: 'SYSTEM_ROOT_ADMIN',
+  ANNOUNCEMENT_INDEX_PREFIX: 'ann_index:',
   API_KEY_PREFIX: 'apikey:',
   API_KEY_HASH_PREFIX: 'apikey_hash:',
   API_KEY_OWNER_ACTIVE_PREFIX: 'apikey_owner_active:',
-  API_KEY_LAST_USED_PREFIX: 'apikey_last_used:'
+  API_KEY_LAST_USED_PREFIX: 'apikey_last_used:',
+  API_KEY_IDS_INDEX: 'SYSTEM_APIKEY_IDS'
 } as const;
 
 const json = (data: unknown, init: ResponseInit = {}) => {
@@ -144,6 +147,32 @@ const readJson = async <T>(req: Request): Promise<T | null> => {
   }
 };
 
+const safeJsonParse = <T>(raw: string | null): T | null => {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+};
+
+const safeKvGetJson = async <T>(kv: KVNamespace, key: string): Promise<T | null> => {
+  const raw = await kv.get(key);
+  return safeJsonParse<T>(raw);
+};
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim())
+        .filter(Boolean)
+    )
+  );
+};
+
 const isInitialized = async (env: Env): Promise<boolean> => {
   const v = await env.ANNOUNCEMENTS_KV.get(KV_KEYS.SYSTEM_INITIALIZED);
   return v === '1';
@@ -174,26 +203,63 @@ const requireInitialized = async (env: Env): Promise<Response | null> => {
 const userKey = (username: string) => `user:${username}`;
 
 const getUser = async (env: Env, username: string): Promise<StoredUser | null> => {
-  const u = await env.ANNOUNCEMENTS_KV.get(userKey(username), { type: 'json' });
-  return (u as StoredUser | null) || null;
+  return safeKvGetJson<StoredUser>(env.ANNOUNCEMENTS_KV, userKey(username));
 };
 
 const putUser = async (env: Env, user: StoredUser): Promise<void> => {
   await env.ANNOUNCEMENTS_KV.put(userKey(user.username), JSON.stringify(user));
 };
 
-const listUsers = async (env: Env): Promise<StoredUser[]> => {
-  const users: StoredUser[] = [];
-  let cursor: string | undefined = undefined;
+const listAllKeyNames = async (kv: KVNamespace, prefix: string): Promise<string[]> => {
+  const names: string[] = [];
+  let cursor: string | undefined;
   do {
-    const page: KVNamespaceListResult<unknown> = await env.ANNOUNCEMENTS_KV.list({ prefix: 'user:', cursor });
-    for (const k of page.keys) {
-      const u = await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' });
-      if (u) users.push(u as StoredUser);
-    }
+    const page: KVNamespaceListResult<unknown> = await kv.list({ prefix, cursor });
+    names.push(...page.keys.map((k) => k.name));
     cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor);
-  return users;
+  return names;
+};
+
+const readUsersIndex = async (env: Env): Promise<string[] | null> => {
+  const raw = await safeKvGetJson<unknown>(env.ANNOUNCEMENTS_KV, KV_KEYS.USERS_INDEX);
+  if (raw === null) return null;
+  return normalizeStringList(raw);
+};
+
+const writeUsersIndex = async (env: Env, usernames: string[]): Promise<void> => {
+  await env.ANNOUNCEMENTS_KV.put(KV_KEYS.USERS_INDEX, JSON.stringify(usernames));
+};
+
+const rebuildUsersIndex = async (env: Env): Promise<string[]> => {
+  const names = await listAllKeyNames(env.ANNOUNCEMENTS_KV, 'user:');
+  const usernames = names
+    .map((k) => k.slice('user:'.length))
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .sort();
+  await writeUsersIndex(env, usernames);
+  return usernames;
+};
+
+const ensureUserInIndex = async (env: Env, username: string): Promise<void> => {
+  const current = (await readUsersIndex(env)) ?? [];
+  if (current.includes(username)) return;
+  await writeUsersIndex(env, [...current, username]);
+};
+
+const removeUserFromIndex = async (env: Env, username: string): Promise<void> => {
+  const current = await readUsersIndex(env);
+  if (!current?.length) return;
+  const next = current.filter((u) => u !== username);
+  if (next.length === current.length) return;
+  await writeUsersIndex(env, next);
+};
+
+const listUsers = async (env: Env): Promise<StoredUser[]> => {
+  const usernames = (await readUsersIndex(env)) ?? (await rebuildUsersIndex(env));
+  const users = await Promise.all(usernames.map((u) => getUser(env, u)));
+  return users.filter((u): u is StoredUser => !!u);
 };
 
 const getSession = async (req: Request, env: Env): Promise<AuthSession | null> => {
@@ -201,9 +267,8 @@ const getSession = async (req: Request, env: Env): Promise<AuthSession | null> =
   const token = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : '';
   if (!token) return null;
 
-  const session = await env.ANNOUNCEMENTS_KV.get(`${KV_KEYS.SESSION_PREFIX}${token}`, { type: 'json' });
-  if (!session) return null;
-  const typed = session as AuthSession;
+  const typed = await safeKvGetJson<AuthSession>(env.ANNOUNCEMENTS_KV, `${KV_KEYS.SESSION_PREFIX}${token}`);
+  if (!typed) return null;
   if (!typed.expiresAt || Date.now() > typed.expiresAt) return null;
   return typed;
 };
@@ -212,6 +277,17 @@ const isRootAdminSession = async (session: AuthSession, env: Env): Promise<boole
   if (session.user.isRootAdmin) return true;
   const root = await getRootAdminUsername(env);
   return !!root && root === session.user.username;
+};
+
+const requireRootAdmin = async (req: Request, env: Env): Promise<AuthSession | Response> => {
+  const initError = await requireInitialized(env);
+  if (initError) return initError;
+
+  const session = await getSession(req, env);
+  if (!session) return unauthorized('登录已过期');
+  if (session.user.role !== UserRole.SUPER) return forbidden('权限不足');
+  if (!(await isRootAdminSession(session, env))) return forbidden('权限不足：仅系统管理员可执行此操作');
+  return session;
 };
 
 type ApiKeyManagerAuth = { session: AuthSession; isRootAdmin: boolean };
@@ -235,6 +311,58 @@ const canAccessMod = (user: User, modId: string): boolean => {
 
 const canApiKeyAccessMod = (apiKey: ApiKeyRecord, modId: string): boolean => {
   return apiKey.allowedMods.includes(modId);
+};
+
+const announcementKey = (modId: string, id: string) => `ann:${modId}:${id}`;
+const announcementIndexKey = (modId: string) => `${KV_KEYS.ANNOUNCEMENT_INDEX_PREFIX}${modId}`;
+
+const readAnnouncementIndex = async (env: Env, modId: string): Promise<string[]> => {
+  const raw = await safeKvGetJson<unknown>(env.ANNOUNCEMENTS_KV, announcementIndexKey(modId));
+  if (raw === null) return [];
+  return normalizeStringList(raw);
+};
+
+const writeAnnouncementIndex = async (env: Env, modId: string, ids: string[]): Promise<void> => {
+  await env.ANNOUNCEMENTS_KV.put(announcementIndexKey(modId), JSON.stringify(ids));
+};
+
+const addAnnouncementToIndex = async (env: Env, modId: string, id: string): Promise<void> => {
+  const current = await readAnnouncementIndex(env, modId);
+  const next = [id, ...current.filter((x) => x !== id)];
+  await writeAnnouncementIndex(env, modId, next);
+};
+
+const removeAnnouncementFromIndex = async (env: Env, modId: string, id: string): Promise<void> => {
+  const current = await readAnnouncementIndex(env, modId);
+  if (!current.length) return;
+  const next = current.filter((x) => x !== id);
+  if (next.length === current.length) return;
+  await writeAnnouncementIndex(env, modId, next);
+};
+
+const rebuildAnnouncementIndex = async (env: Env, modId: string): Promise<number> => {
+  const prefix = `ann:${modId}:`;
+  const keyNames = await listAllKeyNames(env.ANNOUNCEMENTS_KV, prefix);
+  if (keyNames.length === 0) {
+    await writeAnnouncementIndex(env, modId, []);
+    return 0;
+  }
+
+  const records = await Promise.all(
+    keyNames.map(async (key) => {
+      const a = await safeKvGetJson<Announcement>(env.ANNOUNCEMENTS_KV, key);
+      if (!a || typeof a.timestamp !== 'number' || typeof a.id !== 'string' || !a.id) return null;
+      return { id: a.id, timestamp: a.timestamp };
+    })
+  );
+
+  const ids = records
+    .filter((x): x is { id: string; timestamp: number } => !!x)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .map((x) => x.id);
+
+  await writeAnnouncementIndex(env, modId, ids);
+  return ids.length;
 };
 
 type CreateAnnouncementInput = {
@@ -261,7 +389,10 @@ const createAnnouncement = async (env: Env, input: CreateAnnouncementInput): Pro
     timestamp: Date.now()
   };
 
-  await env.ANNOUNCEMENTS_KV.put(`ann:${input.modId}:${id}`, JSON.stringify(next));
+  await Promise.all([
+    env.ANNOUNCEMENTS_KV.put(announcementKey(input.modId, id), JSON.stringify(next)),
+    addAnnouncementToIndex(env, input.modId, id)
+  ]);
   return next;
 };
 
@@ -292,15 +423,34 @@ const toSafeApiKey = (record: ApiKeyRecord) => {
 };
 
 const normalizeAllowedMods = (mods: unknown): string[] => {
-  if (!Array.isArray(mods)) return [];
-  return Array.from(
-    new Set(
-      mods
-        .filter((x): x is string => typeof x === 'string')
-        .map((x) => x.trim())
-        .filter(Boolean)
-    )
-  );
+  return normalizeStringList(mods);
+};
+
+const readApiKeyIdsIndex = async (env: Env): Promise<string[] | null> => {
+  const raw = await safeKvGetJson<unknown>(env.ANNOUNCEMENTS_KV, KV_KEYS.API_KEY_IDS_INDEX);
+  if (raw === null) return null;
+  return normalizeStringList(raw);
+};
+
+const writeApiKeyIdsIndex = async (env: Env, ids: string[]): Promise<void> => {
+  await env.ANNOUNCEMENTS_KV.put(KV_KEYS.API_KEY_IDS_INDEX, JSON.stringify(ids));
+};
+
+const rebuildApiKeyIdsIndex = async (env: Env): Promise<string[]> => {
+  const names = await listAllKeyNames(env.ANNOUNCEMENTS_KV, KV_KEYS.API_KEY_PREFIX);
+  const ids = names
+    .map((k) => k.slice(KV_KEYS.API_KEY_PREFIX.length))
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .sort();
+  await writeApiKeyIdsIndex(env, ids);
+  return ids;
+};
+
+const ensureApiKeyInIndex = async (env: Env, id: string): Promise<void> => {
+  const current = (await readApiKeyIdsIndex(env)) ?? [];
+  if (current.includes(id)) return;
+  await writeApiKeyIdsIndex(env, [...current, id]);
 };
 
 const getApiKeyByToken = async (rawToken: string, env: Env): Promise<ApiKeyRecord | null> => {
@@ -311,7 +461,7 @@ const getApiKeyByToken = async (rawToken: string, env: Env): Promise<ApiKeyRecor
   const id = await env.ANNOUNCEMENTS_KV.get(apiKeyHashKey(tokenHash));
   if (!id) return null;
 
-  const record = (await env.ANNOUNCEMENTS_KV.get(apiKeyMetaKey(id), { type: 'json' })) as ApiKeyRecord | null;
+  const record = await safeKvGetJson<ApiKeyRecord>(env.ANNOUNCEMENTS_KV, apiKeyMetaKey(id));
   if (!record) return null;
   if (record.status !== 'active') return null;
   if (record.tokenHash !== tokenHash) return null;
@@ -347,6 +497,8 @@ export default {
             initialized: await isInitialized(env),
             endpoints: [
               '/api/system/init',
+              '/api/system/rebuild-index',
+              '/api/system/index-status',
               '/api/auth/login',
               '/api/public/list',
               '/api/push/announcement',
@@ -412,7 +564,10 @@ export default {
 
       await Promise.all([
         putUser(env, admin),
+        writeUsersIndex(env, [admin.username]),
         env.ANNOUNCEMENTS_KV.put(KV_KEYS.MODS, JSON.stringify(seedMods)),
+        ...seedMods.map((m) => writeAnnouncementIndex(env, m.id, [])),
+        writeApiKeyIdsIndex(env, []),
         env.ANNOUNCEMENTS_KV.put(KV_KEYS.SYSTEM_ROOT_ADMIN, admin.username),
         env.ANNOUNCEMENTS_KV.put(KV_KEYS.SYSTEM_INITIALIZED, '1')
       ]);
@@ -443,6 +598,71 @@ export default {
 
       await env.ANNOUNCEMENTS_KV.put(KV_KEYS.SYSTEM_ROOT_ADMIN, target.username);
       return withCors(json({ success: true, data: { rootAdminUsername: target.username } }));
+    }
+
+    if (path === '/api/system/index-status' && req.method === 'GET') {
+      const auth = await requireRootAdmin(req, env);
+      if (auth instanceof Response) return auth;
+
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
+      const usersIndex = await readUsersIndex(env);
+      const apiKeyIdsIndex = await readApiKeyIdsIndex(env);
+      const announcementIndex: Record<string, { present: boolean; count: number }> = {};
+      for (const mod of mods) {
+        const raw = await safeKvGetJson<unknown>(env.ANNOUNCEMENTS_KV, announcementIndexKey(mod.id));
+        if (raw === null) {
+          announcementIndex[mod.id] = { present: false, count: 0 };
+        } else {
+          announcementIndex[mod.id] = { present: true, count: normalizeStringList(raw).length };
+        }
+      }
+
+      return withCors(json({
+        success: true,
+        data: {
+          usersIndex: { present: usersIndex !== null, count: usersIndex?.length ?? 0 },
+          apiKeyIdsIndex: { present: apiKeyIdsIndex !== null, count: apiKeyIdsIndex?.length ?? 0 },
+          announcementIndex
+        }
+      }));
+    }
+
+    // --- KV 索引重建（维护接口） ---
+    if (path === '/api/system/rebuild-index' && req.method === 'POST') {
+      const initError = await requireInitialized(env);
+      if (initError) return initError;
+
+      const initToken = (req.headers.get('x-init-token') || '').trim();
+      const hasValidInitToken = !!env.INIT_TOKEN && initToken === env.INIT_TOKEN;
+      if (!hasValidInitToken) {
+        const auth = await requireRootAdmin(req, env);
+        if (auth instanceof Response) return auth;
+      }
+
+      const body = await readJson<{ modId?: string }>(req);
+      const requestedModId = typeof body?.modId === 'string' ? body.modId.trim() : '';
+
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
+      const modSet = new Set(mods.map((m) => m.id));
+      const targetMods = requestedModId ? [requestedModId] : mods.map((m) => m.id);
+      if (requestedModId && !modSet.has(requestedModId)) {
+        return badRequest(`Mod 不存在：${requestedModId}`);
+      }
+
+      const [users, apiKeys] = await Promise.all([rebuildUsersIndex(env), rebuildApiKeyIdsIndex(env)]);
+      const announcementCounts: Record<string, number> = {};
+      for (const modId of targetMods) {
+        announcementCounts[modId] = await rebuildAnnouncementIndex(env, modId);
+      }
+
+      return withCors(json({
+        success: true,
+        data: {
+          users: users.length,
+          apiKeys: apiKeys.length,
+          announcements: announcementCounts
+        }
+      }));
     }
 
     // --- 认证 ---
@@ -508,16 +728,9 @@ export default {
       if (auth instanceof Response) return auth;
       const { session, isRootAdmin } = auth;
 
-      const keys: ApiKeyRecord[] = [];
-      let cursor: string | undefined;
-      do {
-        const page: KVNamespaceListResult<unknown> = await env.ANNOUNCEMENTS_KV.list({ prefix: KV_KEYS.API_KEY_PREFIX, cursor });
-        for (const k of page.keys) {
-          const record = (await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' })) as ApiKeyRecord | null;
-          if (record) keys.push(record);
-        }
-        cursor = page.list_complete ? undefined : page.cursor;
-      } while (cursor);
+      const ids = (await readApiKeyIdsIndex(env)) ?? (await rebuildApiKeyIdsIndex(env));
+      const records = await Promise.all(ids.map((id) => safeKvGetJson<ApiKeyRecord>(env.ANNOUNCEMENTS_KV, apiKeyMetaKey(id))));
+      const keys = records.filter((r): r is ApiKeyRecord => !!r);
 
       keys.sort((a, b) => b.createdAt - a.createdAt);
       const visible = isRootAdmin ? keys : keys.filter((k) => k.createdBy === session.user.username);
@@ -558,7 +771,7 @@ export default {
         if (allowedMods.length === 0) return badRequest('缺少 modId 或 allowedMods');
       }
 
-      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
       const modSet = new Set(mods.map((m) => m.id));
       const unknown = allowedMods.filter((id) => !modSet.has(id));
       if (unknown.length) return badRequest(`Mod 不存在：${unknown.join(', ')}`);
@@ -582,6 +795,7 @@ export default {
         // 兼容/可观测：记录“该账号最近创建的 key id”（不作为唯一约束）
         env.ANNOUNCEMENTS_KV.put(apiKeyOwnerActiveKey(session.user.username), id)
       ]);
+      await ensureApiKeyInIndex(env, id);
 
       return withCors(json({ success: true, data: { ...toSafeApiKey(record), token: rawToken } }));
     }
@@ -595,7 +809,7 @@ export default {
       const id = typeof body?.id === 'string' ? body.id.trim() : '';
       if (!id) return badRequest('缺少 id');
 
-      const record = (await env.ANNOUNCEMENTS_KV.get(apiKeyMetaKey(id), { type: 'json' })) as ApiKeyRecord | null;
+      const record = await safeKvGetJson<ApiKeyRecord>(env.ANNOUNCEMENTS_KV, apiKeyMetaKey(id));
       if (!record) return badRequest('API key 不存在');
 
       if (!isRootAdmin && record.createdBy !== session.user.username) return forbidden('权限不足');
@@ -622,7 +836,7 @@ export default {
       const initError = await requireInitialized(env);
       if (initError) return initError;
 
-      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
       return withCors(json({ success: true, data: mods }));
     }
 
@@ -638,11 +852,14 @@ export default {
       if (!body?.id || !body?.name) return badRequest('缺少 Mod 信息');
       if (!/^[a-zA-Z0-9_-]+$/.test(body.id)) return badRequest('Mod ID 只能包含字母、数字、下划线和连字符');
 
-      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
       if (mods.some((m) => m.id === body.id)) return badRequest('Mod ID 已存在');
 
       const next = [...mods, { id: body.id, name: body.name }];
-      await env.ANNOUNCEMENTS_KV.put(KV_KEYS.MODS, JSON.stringify(next));
+      await Promise.all([
+        env.ANNOUNCEMENTS_KV.put(KV_KEYS.MODS, JSON.stringify(next)),
+        writeAnnouncementIndex(env, body.id, [])
+      ]);
       return withCors(json({ success: true, data: body }));
     }
 
@@ -657,7 +874,7 @@ export default {
       const body = await readJson<{ modId?: string }>(req);
       if (!body?.modId) return badRequest('缺少 modId');
 
-      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
 
       // Remove mod from list
       await env.ANNOUNCEMENTS_KV.put(KV_KEYS.MODS, JSON.stringify(mods.filter((m) => m.id !== body.modId)));
@@ -689,7 +906,7 @@ export default {
       const body = await readJson<{ orderedIds?: string[] }>(req);
       if (!body?.orderedIds || !Array.isArray(body.orderedIds)) return badRequest('缺少 orderedIds');
 
-      const mods = ((await env.ANNOUNCEMENTS_KV.get(KV_KEYS.MODS, { type: 'json' })) as ModDefinition[] | null) || [];
+      const mods = (await safeKvGetJson<ModDefinition[]>(env.ANNOUNCEMENTS_KV, KV_KEYS.MODS)) || [];
       const modMap = new Map(mods.map((m) => [m.id, m]));
       const reordered: ModDefinition[] = [];
 
@@ -754,6 +971,7 @@ export default {
       };
 
       await putUser(env, nextUser);
+      await ensureUserInIndex(env, nextUser.username);
       const { passwordHash, passwordSalt, passwordIterations, passwordAlgo, ...safeUser } = nextUser;
       return withCors(json({ success: true, data: safeUser }));
     }
@@ -791,7 +1009,10 @@ export default {
         }
       }
 
-      await env.ANNOUNCEMENTS_KV.delete(userKey(body.username));
+      await Promise.all([
+        removeUserFromIndex(env, body.username),
+        env.ANNOUNCEMENTS_KV.delete(userKey(body.username))
+      ]);
       return withCors(json({ success: true }));
     }
 
@@ -963,30 +1184,28 @@ export default {
       const modId = url.searchParams.get('modId') || '';
       if (!modId) return badRequest('缺少 modId');
 
-      const prefix = `ann:${modId}:`;
-      const announcements: Announcement[] = [];
-      let cursor: string | undefined;
-      do {
-        const page: KVNamespaceListResult<unknown> = await env.ANNOUNCEMENTS_KV.list({ prefix, cursor });
-        for (const k of page.keys) {
-          const a = await env.ANNOUNCEMENTS_KV.get(k.name, { type: 'json' });
-          if (a) announcements.push(a as Announcement);
-        }
-        cursor = page.list_complete ? undefined : page.cursor;
-      } while (cursor);
+      const ids = await readAnnouncementIndex(env, modId);
+      const indexedRecords = await Promise.all(
+        ids.map((id) => safeKvGetJson<Announcement>(env.ANNOUNCEMENTS_KV, announcementKey(modId, id)))
+      );
+      const indexed = indexedRecords.filter((a): a is Announcement => !!a);
 
-      // 旧数据迁移：`${modId}_updates` 以前存储整个数组（有竞态问题）
-      if (announcements.length === 0) {
-        const legacyKey = `${modId}${KV_KEYS.LEGACY_UPDATES_SUFFIX}`;
-        const legacy = (await env.ANNOUNCEMENTS_KV.get(legacyKey, { type: 'json' })) as Announcement[] | null;
-        if (legacy?.length) {
-          await Promise.all(
-            legacy.map((a) => env.ANNOUNCEMENTS_KV.put(`${prefix}${a.id}`, JSON.stringify(a)))
-          );
-          await env.ANNOUNCEMENTS_KV.delete(legacyKey);
-          announcements.push(...legacy);
-        }
+      // 兼容旧数据：`${modId}_updates` 以前存储整个数组（有竞态问题）；此处仅容错读取并合并返回，不在公开接口做迁移写入
+      const legacyKey = `${modId}${KV_KEYS.LEGACY_UPDATES_SUFFIX}`;
+      const legacyRaw = await safeKvGetJson<unknown>(env.ANNOUNCEMENTS_KV, legacyKey);
+      const legacy = Array.isArray(legacyRaw) ? (legacyRaw as Announcement[]) : [];
+
+      const merged = new Map<string, Announcement>();
+      for (const a of legacy as any[]) {
+        if (!a || typeof a !== 'object') continue;
+        const id = typeof a.id === 'string' ? a.id : '';
+        if (id) merged.set(id, a as Announcement);
       }
+      for (const a of indexed) {
+        if (a?.id) merged.set(a.id, a);
+      }
+
+      const announcements: Announcement[] = Array.from(merged.values()).filter((a) => typeof a?.timestamp === 'number');
 
       // 兼容旧数据：过去曾把 content_text 写成“去标签纯文本”，这里在响应时修正为 Unity 需要的富文本/HTML 源字符串
       for (const a of announcements as any[]) {
@@ -1056,8 +1275,8 @@ export default {
         return forbidden(`权限不足：您无权修改 Mod [${body.modId}] 的公告`);
       }
 
-      const key = `ann:${body.modId}:${body.id}`;
-      const existing = (await env.ANNOUNCEMENTS_KV.get(key, { type: 'json' })) as Announcement | null;
+      const key = announcementKey(body.modId, body.id);
+      const existing = await safeKvGetJson<Announcement>(env.ANNOUNCEMENTS_KV, key);
       if (!existing) return badRequest('公告不存在或已被删除');
 
       const unityContent = body.content_text || body.content_html;
@@ -1087,7 +1306,10 @@ export default {
       const body = await readJson<{ modId?: string; id?: string }>(req);
       if (!body?.modId || !body?.id) return badRequest('缺少 modId 或 id');
 
-      await env.ANNOUNCEMENTS_KV.delete(`ann:${body.modId}:${body.id}`);
+      await Promise.all([
+        env.ANNOUNCEMENTS_KV.delete(announcementKey(body.modId, body.id)),
+        removeAnnouncementFromIndex(env, body.modId, body.id)
+      ]);
       return withCors(json({ success: true }));
     }
 

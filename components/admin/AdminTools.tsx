@@ -3,9 +3,11 @@ import { Box, Tabs, Tab } from '@mui/material';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import StorageIcon from '@mui/icons-material/Storage';
 import PersonIcon from '@mui/icons-material/Person';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { ModManager } from './ModManager';
 import { UserManager } from './UserManager';
 import { ApiKeyManager } from './ApiKeyManager';
+import { SystemManager } from './SystemManager';
 import { UserRole } from '@/types';
 
 interface AdminToolsProps {
@@ -16,7 +18,7 @@ interface AdminToolsProps {
   allowedModIds: string[];
 }
 
-type TabValue = 'mods' | 'users' | 'apikeys';
+type TabValue = 'mods' | 'users' | 'apikeys' | 'system';
 
 export const AdminTools: React.FC<AdminToolsProps> = ({ token, currentUsername, isRootAdmin, role, allowedModIds }) => {
   const [activeTab, setActiveTab] = useState<TabValue>(() => (role === UserRole.SUPER ? 'mods' : 'apikeys'));
@@ -64,6 +66,14 @@ export const AdminTools: React.FC<AdminToolsProps> = ({ token, currentUsername, 
             iconPosition="start"
             label="API Key"
           />
+          {role === UserRole.SUPER && (
+            <Tab
+              value="system"
+              icon={<SettingsIcon fontSize="small" />}
+              iconPosition="start"
+              label="系统管理"
+            />
+          )}
         </Tabs>
       </Box>
 
@@ -81,6 +91,7 @@ export const AdminTools: React.FC<AdminToolsProps> = ({ token, currentUsername, 
             allowedModIds={allowedModIds}
           />
         )}
+        {role === UserRole.SUPER && activeTab === 'system' && <SystemManager token={token} isRootAdmin={isRootAdmin} />}
       </Box>
     </Box>
   );
