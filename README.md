@@ -137,7 +137,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/duckov-mod-open-announcements.git
+git clone https://github.com/Guducat/duckov-mod-open-announcements.git
 cd duckov-mod-open-announcements
 
 # 安装依赖

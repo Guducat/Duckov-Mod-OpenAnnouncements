@@ -1,3 +1,4 @@
+/// <reference types="@cloudflare/workers-types" />
 import { describe, expect, it } from 'vitest';
 import type { AuthSession, ModDefinition } from '../../types';
 import { UserRole, UserStatus } from '../../types';
@@ -67,7 +68,7 @@ class MemoryKv {
       .filter((k) => k.startsWith(prefix))
       .sort()
       .map((name) => ({ name }));
-    return { keys, list_complete: true, cursor: opts?.cursor ?? '' };
+    return { keys, list_complete: true, cacheStatus: null };
   }
 }
 
@@ -220,4 +221,3 @@ describe('workers/api key', () => {
     expect(meta?.status).toBe('revoked');
   });
 });
-

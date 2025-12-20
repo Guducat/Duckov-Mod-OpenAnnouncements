@@ -5,6 +5,7 @@ import ViewListIcon from '@mui/icons-material/ViewList';
 import LoginIcon from '@mui/icons-material/Login';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import GitHubIcon from '@mui/icons-material/GitHub';
 import { AuthSession, UserRole } from '@/types';
 import { AppRoute } from '@/hooks/useHashRoute';
 import { ThemeMode, ThemeToggle } from '../ThemeToggle';
@@ -131,6 +132,22 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5, borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'divider' }} />
 
           <ThemeToggle themeMode={themeMode} setThemeMode={setThemeMode} />
+
+          <IconButton
+            component="a"
+            href="https://github.com/Guducat/Duckov-Mod-OpenAnnouncements"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="GitHub"
+            title="GitHub"
+            sx={{
+              display: { xs: 'none', sm: 'inline-flex' },
+              color: isDark ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+              '&:hover': { color: isDark ? '#fff' : 'primary.main' },
+            }}
+          >
+            <GitHubIcon fontSize="small" />
+          </IconButton>
 
           {session && (
             <IconButton
